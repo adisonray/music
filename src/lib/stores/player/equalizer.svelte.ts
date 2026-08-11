@@ -47,6 +47,11 @@ export class EqualizerStore {
 	readonly #audio: HTMLAudioElement
 	#audioContext: AudioContext | null = null
 	#filters: BiquadFilterNode[] = []
+	#analyser: AnalyserNode | null = null
+
+	get analyser(): AnalyserNode | null {
+		return this.#analyser
+	}
 
 	constructor(audio: HTMLAudioElement) {
 		this.#audio = audio
@@ -60,7 +65,7 @@ export class EqualizerStore {
 			const bands = this.bands
 
 			if (enabled) {
-				this.resumeContext()
+				void this.resumeContext()
 			}
 
 			if (this.#filters.length === 0) {
@@ -92,6 +97,9 @@ export class EqualizerStore {
 		})
 
 		const source = audioContext.createMediaElementSource(this.#audio)
+		const analyser = audioContext.createAnalyser()
+		analyser.fftSize = 256
+		this.#analyser = analyser
 
 		// Chain filters
 		let node: AudioNode = source
@@ -99,7 +107,8 @@ export class EqualizerStore {
 			node.connect(filter)
 			node = filter
 		}
-		node.connect(audioContext.destination)
+		node.connect(analyser)
+		analyser.connect(audioContext.destination)
 
 		this.#audioContext = audioContext
 		this.#filters = filters
@@ -108,10 +117,6 @@ export class EqualizerStore {
 	}
 
 	resumeContext = (): Promise<void> => {
-		if (!this.enabled) {
-			return Promise.resolve()
-		}
-
 		const audioContext = this.#ensureAudioGraph()
 		if (audioContext.state === 'suspended') {
 			return audioContext.resume()

@@ -11,12 +11,12 @@
 	const links: Links[] = [
 		{
 			title: m.aboutSourceCode(),
-			href: 'https://github.com/adidotzip/adi-music',
+			href: 'https://github.com/adidotzip/music',
 			icon: 'github',
 		},
 		{
 			title: m.aboutPrivacy(),
-			href: 'https://github.com/adidotzip/adi-music#privacy',
+			href: 'https://github.com/adidotzip/music#privacy',
 			icon: 'lockCheck',
 		},
 		{

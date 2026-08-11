@@ -55,24 +55,24 @@
 		const handleLoaded = async () => {
 			const { injectTranslation, injectRomanization } = await import('@braccato/core')
 			const renderer = currentEl.renderer
-			if (!renderer || !renderer.lines || !lyrics) return
+			if (!((renderer && renderer.lines ) && lyrics)) return
 
-			let modified = false
+			let needsRelayout = false
+
 			for (const [index, line] of renderer.lines.entries()) {
 				const item = lyrics[index]
 				if (!item) continue
 
-				// Set singer alignment attribute
+				// Attribute changes do not shift element height, so don't trigger relayout
 				if (item.agent) {
 					line.lyricElement.setAttribute('data-agent', item.agent)
-					modified = true
 				}
 
 				// Inject translation
 				const isChinese = getLocale().startsWith('zh')
 				if (item.translation?.text && isChinese) {
 					injectTranslation(document, line.lyricElement, item.translation.text)
-					modified = true
+					needsRelayout = true
 				}
 
 				// Inject romanization
@@ -84,17 +84,17 @@
 						item.romanization,
 						item.timedRomanization
 					)
-					modified = true
+					needsRelayout = true
 				}
 			}
 
-			if (modified) {
+			if (needsRelayout) {
 				renderer.relayout()
 			}
 		}
 
 		currentEl.addEventListener('braccato:lyrics-loaded', handleLoaded)
-		// Run once on load if already loaded
+
 		if (currentEl.renderer && currentEl.renderer.lines) {
 			void handleLoaded()
 		}
@@ -134,17 +134,18 @@
 		--blyrics-line-height: 1.35;
 		--blyrics-padding: 1.25rem;
 
-		/* Let Braccato animate these */
-		--blyrics-scale: 0.97;
-		--blyrics-active-scale: 1.02;
-		--blyrics-lyric-scroll-duration: 900ms;
+		/* Subtle scale parameters to prevent rasterization stutter */
+		--blyrics-scale: 0.985;
+		--blyrics-active-scale: 1.01;
+		--blyrics-lyric-scroll-duration: 700ms;
 
 		/* Colors */
 		--blyrics-lyric-inactive-color: var(--lyric-inactive, rgba(0, 0, 0, 0.45));
 		--blyrics-lyric-active-color: var(--lyric-active-fill, #140c0b);
 		--blyrics-glow-color: var(--lyric-active-unfill, rgba(0, 0, 0, 0.12));
 
-		contain: layout paint;
+		/* Avoid paint containment on scrolling composite surfaces */
+		contain: layout;
 	}
 
 	@media (width >= 640px) {
@@ -168,11 +169,17 @@
 		--blyrics-glow-color: var(--lyric-active-unfill, rgba(255, 255, 255, 0.22));
 	}
 
-	/* Typography only. No animation overrides. */
+	:global(.blyrics-container > div),
+	:global(.blyrics--line) {
+		transition: opacity var(--blyrics-scale-transition-duration, 0.166s) ease, filter var(--blyrics-scale-transition-duration, 0.166s) ease !important;
+		will-change: transform, translate, opacity, filter;
+		backface-visibility: hidden;
+		transform-style: preserve-3d;
+	}
+
 	:global(.blyrics--line) {
 		font-weight: 800;
 		letter-spacing: -0.025em;
-		will-change: transform;
 	}
 
 	:global(.blyrics--translated) {
@@ -201,7 +208,7 @@
 		color: var(--lyric-romanization, rgba(255, 255, 255, 0.65));
 	}
 
-	/* Multi-Singer Alignment (Left / Right only) */
+	/* Multi-Singer Alignment */
 	:global(.blyrics--line) {
 		text-align: left;
 	}
@@ -212,7 +219,6 @@
 		margin-right: auto;
 	}
 
-	/* All secondary singers (v2, v3, background/duet v1000) mapped to right */
 	:global(.blyrics--line[data-agent='v2']),
 	:global(.blyrics--line[data-agent='v3']),
 	:global(.blyrics--line[data-agent='v1000']) {

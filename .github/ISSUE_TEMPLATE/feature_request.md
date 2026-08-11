@@ -9,7 +9,7 @@ assignees: ''
 ## ⚠️ Before creating this issue
 
 **Please check if a similar feature has already been requested:**
-- [ ] I have searched the [existing issues](https://github.com/adidotzip/adi-music/issues) and this feature has not been requested before
+- [ ] I have searched the [existing issues](https://github.com/adidotzip/music/issues) and this feature has not been requested before
 
 ## 💡 What feature would you like to see?
 

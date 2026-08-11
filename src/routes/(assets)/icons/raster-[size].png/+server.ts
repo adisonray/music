@@ -5,7 +5,7 @@ export const prerender = true
 
 // Unfortunately a lot of things still require raster icons. Examples:
 // - Safari
-// - PWA Builder https://github.com/adidotzip/adi-music/issues/71
+// - PWA Builder https://github.com/adidotzip/music/issues/71
 // - Google search results
 const sizes = [16, 32, 48, 128, 192] as const
 

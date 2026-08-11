@@ -3,7 +3,7 @@ import type { TrackData } from '$lib/library/get/value-queries.ts'
 
 export interface ProviderResponse {
     rawLyrics: string
-    source: 'adi' | 'lrcmux' | 'lrclib'
+    source: 'adi' | 'lrcmux' | 'unison' | 'lrclib'
     isPlainOnly?: boolean
 }
 
@@ -15,13 +15,16 @@ export class LyricsProvider {
         const secondary = await LyricsProvider.fetchFromLrcmux(track, signal)
         if (secondary) return secondary
 
-        const tertiary = await LyricsProvider.fetchFromLrclib(track, signal)
+        const tertiary = await LyricsProvider.fetchFromUnison(track, signal)
         if (tertiary) return tertiary
+
+        const quaternary = await LyricsProvider.fetchFromLrclib(track, signal)
+        if (quaternary) return quaternary
 
         return null
     }
 
-    
+
     static async fetchFromAdi(track: TrackData, signal?: AbortSignal): Promise<ProviderResponse | null> {
         try {
             const query = `${track.name} ${formatArtists(track.artists)}`
@@ -110,6 +113,45 @@ export class LyricsProvider {
                 }
             }
             return null
+        } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') throw error
+            return null
+        }
+    }
+
+    static async fetchFromUnison(track: TrackData, signal?: AbortSignal): Promise<ProviderResponse | null> {
+        try {
+            const url = new URL('https://unison.boidu.dev/lyrics')
+            url.searchParams.set('song', track.name)
+            url.searchParams.set('artist', formatArtists(track.artists))
+
+            const response = await fetch(url, { signal })
+            if (!response.ok) return null
+
+            const resData = await response.json()
+            if (!resData || !resData.success || !resData.data) return null
+
+            const data = resData.data
+            if (!data.lyrics) return null
+
+            // Validate that the title and artist 100% match (case-insensitive)
+            const matchTitle = track.name.trim().toLowerCase()
+            const matchArtist = formatArtists(track.artists).trim().toLowerCase()
+            const responseTitle = (data.song || '').trim().toLowerCase()
+            const responseArtist = (data.artist || '').trim().toLowerCase()
+
+            if (matchTitle !== responseTitle || matchArtist !== responseArtist) {
+                return null
+            }
+
+            const rawLyrics = data.lyrics
+            const isPlainOnly = data.syncType === 'plain' || (!rawLyrics.includes('[') && !rawLyrics.includes('<tt'))
+
+            return {
+                rawLyrics,
+                source: 'unison',
+                isPlainOnly
+            }
         } catch (error) {
             if (error instanceof Error && error.name === 'AbortError') throw error
             return null

@@ -41,7 +41,7 @@
 			{
 				label: m.foundAnIssue(),
 				action: () => {
-					navigateToExternal('https://github.com/adidotzip/adi-music/issues/new')
+					navigateToExternal('https://github.com/adidotzip/music/issues/new')
 				},
 			},
 		]

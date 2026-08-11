@@ -62,7 +62,7 @@ Lyrics are fetched from multiple providers for better coverage and synchronizati
 * [LRCLIB](https://lrclib.net/)
 * [AMLL DB](https://github.com/amll-dev/amll-ttml-db)
 * Hosted On Vercel
-
+* Fork Of **Snae Player**
 
 
 ---

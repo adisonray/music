@@ -1,9 +1,9 @@
 import 'fake-indexeddb/auto'
+import JSZip from 'jszip'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDatabase } from '$lib/db/database.ts'
 import { clearDatabaseStores } from '$lib/helpers/test-helpers.ts'
 import { exportBackupData, importBackupData, validateBackupData } from '../backup.ts'
-import JSZip from 'jszip'
 
 describe('backup and restore', () => {
 	beforeEach(async () => {
@@ -50,6 +50,42 @@ describe('backup and restore', () => {
 			file: new File(['audio'], 'test.mp3', { type: 'audio/mpeg' }),
 		})
 
+		await db.add('lyrics', {
+			trackId: 1,
+			data: {
+				status: 'found',
+				source: 'uploaded',
+				lyrics: [
+					{
+						startTimeMs: 0,
+						durationMs: 5000,
+						words: 'Hello world',
+					} as any,
+				],
+				syncType: 'line',
+			},
+			version: 14,
+			cachedAt: Date.now() - 1000 * 60 * 60 * 24 * 10, // 10 days old (uploaded shouldn't expire)
+		} as any)
+
+		await db.add('lyrics', {
+			trackId: 2,
+			data: {
+				status: 'found',
+				source: 'adi',
+				lyrics: [
+					{
+						startTimeMs: 0,
+						durationMs: 5000,
+						words: 'Regular lyric',
+					} as any,
+				],
+				syncType: 'line',
+			},
+			version: 14,
+			cachedAt: Date.now() - 1000 * 60 * 60 * 24 * 10, // 10 days old (should be updated on restore)
+		} as any)
+
 		// Export
 		const backupBlob = await exportBackupData()
 		expect(backupBlob).toBeInstanceOf(Blob)
@@ -65,6 +101,7 @@ describe('backup and restore', () => {
 		expect(validateBackupData(backupData)).toBe(true)
 		expect(backupData.db.tracks).toHaveLength(1)
 		expect(backupData.db.artists).toHaveLength(1)
+		expect(backupData.db.lyrics).toHaveLength(2)
 
 		// Now clear database
 		await clearDatabaseStores()
@@ -80,6 +117,21 @@ describe('backup and restore', () => {
 		const restoredTracks = await db.getAll('tracks')
 		expect(restoredTracks).toHaveLength(1)
 		expect(restoredTracks[0]?.name).toBe('Test Track')
+
+		const restoredLyrics = await db.getAll('lyrics')
+		expect(restoredLyrics).toHaveLength(2)
+		const uploadedLyric = restoredLyrics.find((l) => l.data.source === 'uploaded')
+		const adiLyric = restoredLyrics.find((l) => l.data.source === 'adi')
+
+		expect(uploadedLyric).toBeDefined()
+		expect(uploadedLyric?.data.lyrics[0].words).toBe('Hello world')
+		// uploaded cachedAt is preserved/remains old, but it doesn't expire
+		expect(uploadedLyric?.cachedAt).toBeLessThan(Date.now() - 1000 * 60 * 60 * 24 * 9)
+
+		expect(adiLyric).toBeDefined()
+		expect(adiLyric?.data.lyrics[0].words).toBe('Regular lyric')
+		// regular lyric's cachedAt should be refreshed to Date.now() on restore
+		expect(adiLyric?.cachedAt).toBeGreaterThan(Date.now() - 1000 * 60)
 	})
 
 	it('handles validation and loading of older/incomplete backups gracefully', async () => {

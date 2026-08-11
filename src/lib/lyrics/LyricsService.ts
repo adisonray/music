@@ -75,7 +75,30 @@ export class LyricsService {
                 if (e instanceof Error && e.name === 'AbortError') throw e
             }
 
-            // C. Query LRCLib (Tertiary)
+            // C. Query Unison (Tertiary)
+            try {
+                const unisonResponse = await LyricsProvider.fetchFromUnison(track, signal)
+                if (unisonResponse) {
+                    if (!unisonResponse.isPlainOnly) {
+                        const lyrics = LyricsParser.parse(unisonResponse.rawLyrics, durationMs)
+                        const hasWordTiming = lyrics.some((lyric) => lyric.parts && lyric.parts.length > 0)
+                        const result: ServiceLyricsResult = {
+                            status: 'found',
+                            source: 'unison',
+                            lyrics,
+                            syncType: hasWordTiming ? 'karaoke' : 'line'
+                        }
+                        await LyricsCache.set(track.id, result)
+                        return result
+                    } else if (!plainLyrics) {
+                        plainLyrics = { content: unisonResponse.rawLyrics, source: 'unison' }
+                    }
+                }
+            } catch (e) {
+                if (e instanceof Error && e.name === 'AbortError') throw e
+            }
+
+            // D. Query LRCLib (Quaternary / Last Fallback)
             try {
                 const lrclibResponse = await LyricsProvider.fetchFromLrclib(track, signal)
                 if (lrclibResponse) {
@@ -104,7 +127,7 @@ export class LyricsService {
                 if (e instanceof Error && e.name === 'AbortError') throw e
             }
 
-            // D. Fall back to Plain lyrics if found from any provider
+            // E. Fall back to Plain lyrics if found from any provider
             if (plainLyrics) {
                 const lyrics = LyricsParser.parse(plainLyrics.content, durationMs)
                 const result: ServiceLyricsResult = {

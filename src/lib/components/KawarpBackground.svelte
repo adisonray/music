@@ -31,6 +31,7 @@
 	}: Props = $props()
 
 	const mainStore = useMainStore()
+	const player = usePlayer()
 
 	const activeTintColor = $derived<[number, number, number]>(
 		tintColor === undefined
@@ -45,6 +46,58 @@
 	let kawarpInstance: Kawarp | null = null
 	let currentLoadedUrl: string | null = null
 	let isLoaded = $state(false)
+	let animationFrameId: number | null = null
+
+	const runAudioReaction = () => {
+		if (!enabled || !kawarpInstance) {
+			if (animationFrameId) {
+				cancelAnimationFrame(animationFrameId)
+				animationFrameId = null
+			}
+			return
+		}
+
+		const analyser = player.equalizer.analyser
+		if (analyser && player.playing) {
+			const bufferLength = analyser.frequencyBinCount
+			const dataArray = new Uint8Array(bufferLength)
+			analyser.getByteFrequencyData(dataArray)
+
+			let sum = 0
+			for (let i = 0; i < bufferLength; i += 1) {
+				sum += dataArray[i] ?? 0
+			}
+			const average = sum / bufferLength // 0 to 255
+
+			// Isolate bass (first 15% of the bins)
+			let bassSum = 0
+			const bassCount = Math.max(1, Math.floor(bufferLength * 0.15))
+			for (let i = 0; i < bassCount; i += 1) {
+				bassSum += dataArray[i] ?? 0
+			}
+			const bassAverage = bassSum / bassCount // 0 to 255
+
+			const normVol = average / 255
+			const normBass = bassAverage / 255
+
+			const targetWarpIntensity = warpIntensity + normBass * 0.6
+			const targetAnimationSpeed = activeAnimationSpeed + normVol * 1.5
+			const targetScale = scale + normBass * 0.05
+
+			const ease = 0.1
+			kawarpInstance.warpIntensity = kawarpInstance.warpIntensity + (targetWarpIntensity - kawarpInstance.warpIntensity) * ease
+			kawarpInstance.animationSpeed = kawarpInstance.animationSpeed + (targetAnimationSpeed - kawarpInstance.animationSpeed) * ease
+			kawarpInstance.scale = kawarpInstance.scale + (targetScale - kawarpInstance.scale) * ease
+		} else {
+			// Fade back to defaults
+			const ease = 0.05
+			kawarpInstance.warpIntensity = kawarpInstance.warpIntensity + (warpIntensity - kawarpInstance.warpIntensity) * ease
+			kawarpInstance.animationSpeed = kawarpInstance.animationSpeed + (activeAnimationSpeed - kawarpInstance.animationSpeed) * ease
+			kawarpInstance.scale = kawarpInstance.scale + (scale - kawarpInstance.scale) * ease
+		}
+
+		animationFrameId = requestAnimationFrame(runAudioReaction)
+	}
 
 	onMount(() => {
 		let resizeObserver: ResizeObserver | null = null
@@ -98,6 +151,10 @@
 			if (resizeObserver) {
 				resizeObserver.disconnect()
 			}
+			if (animationFrameId) {
+				cancelAnimationFrame(animationFrameId)
+				animationFrameId = null
+			}
 			if (kawarpInstance) {
 				kawarpInstance.stop()
 				kawarpInstance.dispose()
@@ -123,6 +180,29 @@
 			dithering,
 			scale
 		})
+	})
+
+	// React to audio playing and start/stop visualizer loop
+	$effect(() => {
+		// Evaluate player.playing to establish reactive dependency
+		const isEnabled = enabled
+		if (player.playing && isEnabled && kawarpInstance) {
+			if (!animationFrameId) {
+				runAudioReaction()
+			}
+		} else {
+			if (animationFrameId) {
+				cancelAnimationFrame(animationFrameId)
+				animationFrameId = null
+			}
+		}
+
+		return () => {
+			if (animationFrameId) {
+				cancelAnimationFrame(animationFrameId)
+				animationFrameId = null
+			}
+		}
 	})
 
 	// React to imageUrl changes

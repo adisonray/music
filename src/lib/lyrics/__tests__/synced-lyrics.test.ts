@@ -1,8 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import 'fake-indexeddb/auto'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { getDatabase } from '$lib/db/database.ts'
+import { clearDatabaseStores } from '$lib/helpers/test-helpers.ts'
 import type { TrackData } from '$lib/library/get/value-queries.ts'
 import { UNKNOWN_ITEM } from '$lib/library/types.ts'
-import { LyricsService } from '../LyricsService.ts'
+import { LyricsCache } from '../LyricsCache.ts'
 import { LyricsParser } from '../LyricsParser.ts'
+import { LyricsService } from '../LyricsService.ts'
 
 const createTrack = (overrides: Partial<TrackData> = {}): TrackData => ({
 	id: 1,
@@ -34,6 +38,10 @@ const jsonResponse = (body: unknown, init?: ResponseInit): Response =>
 	})
 
 describe('Braccato Lyrics System', () => {
+	beforeEach(async () => {
+		await clearDatabaseStores()
+	})
+
 	afterEach(() => {
 		vi.unstubAllGlobals()
 	})
@@ -53,17 +61,18 @@ describe('Braccato Lyrics System', () => {
 			.mockResolvedValueOnce(
 				jsonResponse({
 					ok: true,
-					results: [{ id: '123' }]
-				})
+					results: [{ id: '123' }],
+				}),
 			)
 			.mockResolvedValueOnce(
 				jsonResponse({
 					ok: true,
 					lyric: {
 						format: 'qrc',
-						rawContent: '[1000,1000]First(1000,500) (0,0)line(1500,500)\n[2000,1000]Second(2000,500) (0,0)line(2500,500)'
-					}
-				})
+						rawContent:
+							'[1000,1000]First(1000,500) (0,0)line(1500,500)\n[2000,1000]Second(2000,500) (0,0)line(2500,500)',
+					},
+				}),
 			)
 
 		vi.stubGlobal('fetch', fetchMock)
@@ -85,16 +94,15 @@ describe('Braccato Lyrics System', () => {
 			.mockResolvedValueOnce(
 				jsonResponse({
 					ok: true,
-					results: []
-				})
+					results: [],
+				}),
 			) // Adi search returns no match
-			.mockResolvedValueOnce(
-				new Response(null, { status: 404 })
-			) // LRC Mux fetch returns 404
+			.mockResolvedValueOnce(new Response(null, { status: 404 })) // LRC Mux fetch returns 404
+			.mockResolvedValueOnce(new Response(null, { status: 404 })) // Unison fetch returns 404
 			.mockResolvedValueOnce(
 				jsonResponse({
-					syncedLyrics: '[00:01.00]LRCLib Line 1\n[00:02.00]LRCLib Line 2'
-				})
+					syncedLyrics: '[00:01.00]LRCLib Line 1\n[00:02.00]LRCLib Line 2',
+				}),
 			) // LRCLib exact fetch
 
 		vi.stubGlobal('fetch', fetchMock)
@@ -115,18 +123,19 @@ describe('Braccato Lyrics System', () => {
 			.mockResolvedValueOnce(
 				jsonResponse({
 					ok: true,
-					results: [{ id: '123' }]
-				})
+					results: [{ id: '123' }],
+				}),
 			)
 			.mockResolvedValueOnce(
 				jsonResponse({
 					ok: true,
 					lyric: {
-						lyrics: 'Plain lyric line 1\nPlain lyric line 2'
-					}
-				})
+						lyrics: 'Plain lyric line 1\nPlain lyric line 2',
+					},
+				}),
 			) // Adi returns plain lyrics
 			.mockResolvedValueOnce(new Response(null, { status: 404 })) // LRC Mux exact returns 404
+			.mockResolvedValueOnce(new Response(null, { status: 404 })) // Unison fetch returns 404
 			.mockResolvedValueOnce(new Response(null, { status: 404 })) // LRCLib exact returns 404
 			.mockResolvedValueOnce(jsonResponse([])) // LRCLib search returns empty
 
@@ -141,5 +150,51 @@ describe('Braccato Lyrics System', () => {
 		expect(result.source).toBe('adi')
 		expect(result.syncType).toBe('plain')
 		expect(result.lyrics[0]?.words).toBe('Plain lyric line 1')
+	})
+
+	describe('LyricsCache expiration logic', () => {
+		beforeEach(async () => {
+			await clearDatabaseStores()
+		})
+
+		it('exempts uploaded lyrics from expiration and expires regular lyrics correctly', async () => {
+			const db = await getDatabase()
+
+			// 1. Set an uploaded lyric that is 10 days old
+			await db.add('lyrics', {
+				trackId: 10,
+				data: {
+					status: 'found',
+					source: 'uploaded',
+					lyrics: [{ startTimeMs: 0, durationMs: 5000, words: 'Uploaded lyric text' } as any],
+					syncType: 'line',
+				},
+				version: 14,
+				cachedAt: Date.now() - 1000 * 60 * 60 * 24 * 10, // 10 days old
+			} as any)
+
+			// 2. Set an adi lyric that is 10 days old
+			await db.add('lyrics', {
+				trackId: 20,
+				data: {
+					status: 'found',
+					source: 'adi',
+					lyrics: [{ startTimeMs: 0, durationMs: 5000, words: 'Adi lyric text' } as any],
+					syncType: 'line',
+				},
+				version: 14,
+				cachedAt: Date.now() - 1000 * 60 * 60 * 24 * 10, // 10 days old
+			} as any)
+
+			// 3. Retrieve uploaded lyric
+			const uploadedResult = await LyricsCache.get(10)
+			expect(uploadedResult).toBeDefined()
+			expect(uploadedResult?.source).toBe('uploaded')
+			expect(uploadedResult?.lyrics?.[0]?.words).toBe('Uploaded lyric text')
+
+			// 4. Retrieve regular lyric (should be expired)
+			const adiResult = await LyricsCache.get(20)
+			expect(adiResult).toBeUndefined()
+		})
 	})
 })

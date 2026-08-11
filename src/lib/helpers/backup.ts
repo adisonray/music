@@ -26,7 +26,10 @@ const getExtension = (fileName?: string) => {
 
 export const exportBackupData = async (): Promise<Blob> => {
 	const JSZipModule = await import('jszip')
-	const JSZipConstructor = typeof JSZipModule.default === 'function' ? JSZipModule.default : (JSZipModule as any).default
+	const JSZipConstructor =
+		typeof JSZipModule.default === 'function'
+			? JSZipModule.default
+			: (JSZipModule as any).default
 	const zip = new JSZipConstructor()
 
 	// Gather localStorage items
@@ -257,6 +260,13 @@ export const importBackupData = async (zip: JSZip, backup: BackupData): Promise<
 					} catch (e) {
 						console.warn(`Failed to parse artwork for album ${albumUuid}`, e)
 					}
+				}
+			}
+
+			if (storeName === 'lyrics') {
+				const isUploaded = cloned.data?.source === 'uploaded'
+				if (!isUploaded && cloned.cachedAt) {
+					cloned.cachedAt = Date.now()
 				}
 			}
 

@@ -9,7 +9,7 @@ assignees: ''
 ## ⚠️ Before creating this issue
 
 **Please check if a similar issue already exists:**
-- [ ] I have searched the [existing issues](https://github.com/adidotzip/adi-music/issues) and this bug has not been reported before
+- [ ] I have searched the [existing issues](https://github.com/adidotzip/music/issues) and this bug has not been reported before
 
 ## 🐛 Bug Description
 

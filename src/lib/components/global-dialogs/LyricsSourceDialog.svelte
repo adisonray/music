@@ -75,7 +75,7 @@
 		snackbar('Custom source deleted')
 	}
 
-	async function selectSource(sourceId: 'adi' | 'lrcmux' | 'lrclib' | string) {
+	async function selectSource(sourceId: 'adi' | 'lrcmux' | 'unison' | 'lrclib' | string) {
 		if (!track) return
 		fetching = true
 		activeFetchingSource = sourceId
@@ -105,6 +105,18 @@
 						source: 'lrcmux',
 						lyrics,
 						syncType: hasWordTiming ? 'karaoke' : 'line',
+					}
+				}
+			} else if (sourceId === 'unison') {
+				const resp = await LyricsProvider.fetchFromUnison(track)
+				if (resp) {
+					const lyrics = LyricsParser.parse(resp.rawLyrics, durationMs)
+					const hasWordTiming = lyrics.some((lyric) => lyric.parts && lyric.parts.length > 0)
+					result = {
+						status: 'found',
+						source: 'unison',
+						lyrics,
+						syncType: hasWordTiming ? 'karaoke' : resp.isPlainOnly ? 'plain' : 'line',
 					}
 				}
 			} else if (sourceId === 'lrclib') {
@@ -296,6 +308,24 @@
 								{/if}
 							</button>
 
+							<!-- Unison -->
+							<button
+								type="button"
+								disabled={fetching}
+								class="interactable flex items-center justify-between rounded-xl bg-surfaceContainerLow p-4 text-left transition-colors hover:bg-surfaceContainer"
+								onclick={() => selectSource('unison')}
+							>
+								<div class="flex flex-col">
+									<span class="text-body-large font-bold">Unison</span>
+									<span class="text-body-small text-onSurfaceVariant">Tertiary Provider</span>
+								</div>
+								{#if fetching && activeFetchingSource === 'unison'}
+									<Spinner class="size-5" />
+								{:else}
+									<Icon type="chevronRight" class="text-onSurfaceVariant size-5" />
+								{/if}
+							</button>
+
 							<!-- LRCLIB -->
 							<button
 								type="button"
@@ -305,7 +335,7 @@
 							>
 								<div class="flex flex-col">
 									<span class="text-body-large font-bold">LRCLIB</span>
-									<span class="text-body-small text-onSurfaceVariant">Tertiary Provider</span>
+									<span class="text-body-small text-onSurfaceVariant">Last Fallback Provider</span>
 								</div>
 								{#if fetching && activeFetchingSource === 'lrclib'}
 									<Spinner class="size-5" />
@@ -392,16 +422,16 @@
 								<p class="text-body-small text-onSurfaceVariant px-1 leading-relaxed">
 									Use placeholders in your URL Template:
 									<code class="bg-surfaceContainerHigh px-1 rounded font-mono text-primary">
-										{`{title}`}
+										{'{title}'}
 									</code>,
 									<code class="bg-surfaceContainerHigh px-1 rounded font-mono text-primary">
-										{`{artist}`}
+										{'{artist}'}
 									</code>,
 									<code class="bg-surfaceContainerHigh px-1 rounded font-mono text-primary">
-										{`{album}`}
+										{'{album}'}
 									</code>, or
 									<code class="bg-surfaceContainerHigh px-1 rounded font-mono text-primary">
-										{`{duration}`}
+										{'{duration}'}
 									</code> (seconds).
 								</p>
 

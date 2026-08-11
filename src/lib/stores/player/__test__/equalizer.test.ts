@@ -19,6 +19,7 @@ interface MockAudioContext {
 	resume: ReturnType<typeof vi.fn>
 	createBiquadFilter: ReturnType<typeof vi.fn>
 	createMediaElementSource: ReturnType<typeof vi.fn>
+	createAnalyser: ReturnType<typeof vi.fn>
 }
 
 const setupAudioContextMock = (state: AudioContextState = 'suspended') => {
@@ -51,6 +52,13 @@ const setupAudioContextMock = (state: AudioContextState = 'suspended') => {
 		})
 
 		createMediaElementSource = vi.fn(() => makeSource())
+
+		createAnalyser = vi.fn(() => ({
+			fftSize: 256,
+			frequencyBinCount: 128,
+			connect: vi.fn(),
+			getByteFrequencyData: vi.fn(),
+		}))
 
 		constructor() {
 			instances.push(this)
