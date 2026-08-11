@@ -49,8 +49,9 @@ Lyrics are fetched from multiple providers for better coverage and synchronizati
 
 1. LRCLIB
 2. LRCMUX
-3. AMLL DB
-4. Own Upload/Custom API
+3. AMLL DB (Written as 'adi lyrics' in the app)
+4. Unison/BetterLyrics
+5. Own Upload/Custom API
 
 ---
 
