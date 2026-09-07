@@ -84,12 +84,18 @@ declare global {
 
 	namespace svelteHTML {
 		interface IntrinsicElements {
-			'braccato-lyrics': {
-				source?: any
-				theme?: string
-				playing?: boolean
-				'current-time'?: number
+			'am-lyrics': {
+				ttml?: string
+				'song-title'?: string
+				'song-artist'?: string
+				'song-album'?: string
+				songwriters?: string
+				'song-duration'?: number
+				'highlight-color'?: string
+				'font-family'?: string
+				currenttime?: number
 				class?: string
+				online-click?: (e: CustomEvent<{ timestamp: number }>) => void
 			} & svelteHTML.HTMLAttributes<HTMLElement>
 		}
 	}

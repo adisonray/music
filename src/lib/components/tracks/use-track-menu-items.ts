@@ -3,6 +3,7 @@ import { resolve } from '$app/paths'
 import { getDatabase } from '$lib/db/database.ts'
 import type { TrackData } from '$lib/library/get/value'
 import { toggleFavoriteTrack } from '$lib/library/playlists-actions'
+import { autoApplyTrackMetadata } from '$lib/services/auto-metadata.ts'
 import type { MenuItem } from '../menu/types.ts'
 
 export type PredefinedTrackMenuItemOption =
@@ -117,6 +118,19 @@ export const useTrackMenuItems = (
 			},
 			{
 				predefinedKey: 'disableEditMetadata',
+				label: m.trackAutoMetadata(),
+				action: async () => {
+					snackbar(m.metadataAutoFetching())
+					const res = await autoApplyTrackMetadata(track.id)
+					if (res.success) {
+						snackbar(m.metadataAutoSuccess())
+					} else {
+						snackbar(m.metadataAutoNotFound())
+					}
+				},
+			},
+			{
+				predefinedKey: 'disableEditMetadata',
 				label: m.trackMetadata(),
 				action: () => {
 					dialogs.openDialog('trackMetadata', track)
@@ -167,6 +181,23 @@ export const useTrackMenuItems = (
 				label: m.playerAddToQueue(),
 				action: () => {
 					player.addToQueue(trackIds)
+				},
+			},
+			{
+				predefinedKey: 'disableEditMetadata',
+				label: m.trackAutoMetadata(),
+				action: async () => {
+					snackbar(m.metadataAutoFetching())
+					let count = 0
+					for (const id of trackIds) {
+						const res = await autoApplyTrackMetadata(id)
+						if (res.success) count++
+					}
+					if (count > 0) {
+						snackbar(m.metadataAutoSuccess())
+					} else {
+						snackbar(m.metadataAutoNotFound())
+					}
 				},
 			},
 			{

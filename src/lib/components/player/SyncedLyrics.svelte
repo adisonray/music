@@ -103,10 +103,10 @@
 			'Instrumental',
 			'This track is an instrumental.',
 		)}
-	{:else if result?.status === 'found' && result.lyrics}
+	{:else if result?.status === 'found' && result.ttml}
 		<div class="absolute inset-0 h-full w-full">
 			<LyricsRenderer
-				lyrics={result.lyrics}
+				ttml={result.ttml}
 				audioElement={player.audioElement}
 				class="h-full w-full"
 			/>

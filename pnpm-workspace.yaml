@@ -1,9 +1,7 @@
-
 allowBuilds:
   '@biomejs/biome': false
   '@tailwindcss/oxide': false
 engineStrict: true
 
 patchedDependencies:
-  '@braccato/core': patches/@braccato__core.patch
   '@material/material-color-utilities': 'patches/@material__material-color-utilities.patch'

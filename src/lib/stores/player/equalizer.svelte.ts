@@ -117,6 +117,10 @@ export class EqualizerStore {
 	}
 
 	resumeContext = (): Promise<void> => {
+		if (!this.enabled) {
+			return Promise.resolve()
+		}
+
 		const audioContext = this.#ensureAudioGraph()
 		if (audioContext.state === 'suspended') {
 			return audioContext.resume()

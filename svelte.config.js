@@ -96,6 +96,7 @@ const config = {
 					'https://lyricsplus.prjktla.workers.dev',
 					'https://unison.boidu.dev',
 					'https://api.lrcmux.dev',
+					'https://lyrics-api.binimum.org',
 
 					// JioSaavn API
 					'https://jiosaavn-apix.arcadopredator.workers.dev',
@@ -112,9 +113,12 @@ const config = {
 					'https://itunes.apple.com',
 					'https://*.itunes.apple.com',
 					'https://mvod.itunes.apple.com',
+					'https://*.mzstatic.com',
 
 					// Deezer API
 					'https://api.deezer.com',
+					'https://e-cdns-images.dzcdn.net',
+					'https://cdn-images.dzcdn.net',
 				],
 
 				'worker-src': ['self', 'blob:'],

@@ -91,6 +91,7 @@ export class PlayerStore {
 		this.equalizer.init()
 
 		const audio = this.#audio
+		audio.crossOrigin = 'anonymous'
 
 		// Plain (non-$state) so reads inside the effect don't create subscriptions.
 		let prevTrackId: number | null = null
@@ -199,9 +200,18 @@ export class PlayerStore {
 			}
 
 			if (shouldPlay) {
-				void this.equalizer.resumeContext().then(() => audio.play())
+				if (this.equalizer.enabled) {
+					void this.equalizer.resumeContext()
+				}
+				const playPromise = audio.play()
+				if (playPromise !== undefined) {
+					playPromise.catch((error) => {
+						console.warn('Audio playback error on iOS/Safari:', error)
+						this.playing = false
+					})
+				}
 			} else {
-				void audio.pause()
+				audio.pause()
 			}
 		})
 
@@ -379,7 +389,25 @@ export class PlayerStore {
 			return
 		}
 
-		this.playing = force ?? !this.playing
+		const nextState = force ?? !this.playing
+		this.playing = nextState
+		if (nextState) {
+			if (this.#audioLoader.loading) {
+				return
+			}
+
+			if (this.equalizer.enabled) {
+				void this.equalizer.resumeContext()
+			}
+			const playPromise = this.#audio.play()
+			if (playPromise !== undefined) {
+				playPromise.catch(() => {
+					// Controlled error fallback in effect
+				})
+			}
+		} else {
+			this.#audio.pause()
+		}
 	}
 
 	playNext = (): void => {
