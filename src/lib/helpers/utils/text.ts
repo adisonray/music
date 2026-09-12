@@ -8,8 +8,14 @@ export const truncate = (text: string, length: number): string => {
 	return `${text.slice(0, length)}...`
 }
 
-export const formatArtists = (artists: readonly StringOrUnknownItem[]): string =>
-	artists.filter((artist) => artist !== UNKNOWN_ITEM).join(', ')
+export const formatArtists = (artists: readonly StringOrUnknownItem[] | undefined | null): string =>
+	Array.isArray(artists)
+		? artists.filter((artist) => artist !== UNKNOWN_ITEM).join(', ')
+		: typeof artists === 'string'
+			? artists !== UNKNOWN_ITEM
+				? artists
+				: ''
+			: ''
 
 export const formatNameOrUnknown = (name: StringOrUnknownItem, fallback = m.unknown()): string =>
 	name === UNKNOWN_ITEM ? fallback : name

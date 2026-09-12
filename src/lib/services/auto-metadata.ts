@@ -1,9 +1,10 @@
 import { getDatabase } from '$lib/db/database.ts'
 import { dispatchDatabaseChangedEvent } from '$lib/db/events.ts'
-import { UNKNOWN_ITEM, type Track } from '$lib/library/types.ts'
 import { getArtworkRelatedData } from '$lib/library/scan-actions/scanner/parse/format-artwork.ts'
-import { searchSongs } from '$lib/services/jiosaavn.ts'
+import { UNKNOWN_ITEM, type Track } from '$lib/library/types.ts'
+import { LyricsCache } from '$lib/lyrics/LyricsCache.ts'
 import { LyricsService } from '$lib/lyrics/LyricsService.ts'
+import { searchSongs } from '$lib/services/jiosaavn.ts'
 
 export interface AutoMetadataResult {
 	title: string
@@ -26,17 +27,28 @@ export const cleanQueryString = (raw: string): string => {
 	str = str.replace(/_/g, ' ')
 	// Remove common file noise tags like [320kbps], (Official Video), etc.
 	str = str.replace(/\[.*?\]|\(.*?video.*?\)/gi, '')
+	// Remove leading track numbers e.g. "01 - ", "01. ", "01 "
+	str = str.replace(/^\d+[\s.-]+/, '')
 	return str.trim()
 }
 
-export const fetchAutoMetadata = async (
-	query: string,
+const isInvalidArtist = (artist?: string): boolean => {
+	if (!artist) return true
+	const lower = artist.trim().toLowerCase()
+	return (
+		!lower ||
+		lower === UNKNOWN_ITEM.toLowerCase() ||
+		lower === 'unknown artist' ||
+		lower === 'unknown' ||
+		lower === 'various artists'
+	)
+}
+
+const doFetchAutoMetadata = async (
+	cleaned: string,
 	artistHint?: string,
 ): Promise<AutoMetadataResult[]> => {
-	const cleaned = cleanQueryString(query)
-	if (!cleaned) return []
-
-	const searchTerm = artistHint && artistHint !== UNKNOWN_ITEM ? `${cleaned} ${artistHint}` : cleaned
+	const searchTerm = artistHint ? `${cleaned} ${artistHint}` : cleaned
 	const results: AutoMetadataResult[] = []
 
 	// 1. Fetch from iTunes API
@@ -52,7 +64,9 @@ export const fetchAutoMetadata = async (
 						? item.artworkUrl100.replace('100x100bb.jpg', '1000x1000bb.jpg')
 						: undefined
 
-					const year = item.releaseDate ? new Date(item.releaseDate).getFullYear().toString() : undefined
+					const year = item.releaseDate
+						? new Date(item.releaseDate).getFullYear().toString()
+						: undefined
 
 					results.push({
 						title: item.trackName || '',
@@ -79,7 +93,12 @@ export const fetchAutoMetadata = async (
 	try {
 		const saavnSongs = await searchSongs(searchTerm)
 		for (const song of saavnSongs) {
-			const artwork = typeof song.image?.full === 'string' ? song.image.full : (typeof song.image?.small === 'string' ? song.image.small : undefined)
+			const artwork =
+				typeof song.image?.full === 'string'
+					? song.image.full
+					: typeof song.image?.small === 'string'
+						? song.image.small
+						: undefined
 			results.push({
 				title: song.name,
 				artist: song.artists.join(', '),
@@ -97,14 +116,40 @@ export const fetchAutoMetadata = async (
 	return results
 }
 
+export const fetchAutoMetadata = async (
+	query: string,
+	artistHint?: string,
+): Promise<AutoMetadataResult[]> => {
+	const cleaned = cleanQueryString(query)
+	if (!cleaned) return []
+
+	const validArtist = artistHint && !isInvalidArtist(artistHint) ? artistHint.trim() : undefined
+
+	let results = await doFetchAutoMetadata(cleaned, validArtist)
+
+	// Fallback: If searching with artist hint returned no results, try searching with query alone
+	if (results.length === 0 && validArtist) {
+		results = await doFetchAutoMetadata(cleaned, undefined)
+	}
+
+	return results
+}
+
 export const downloadArtworkBlob = async (url: string): Promise<Blob | null> => {
-	try {
-		const response = await fetch(url)
-		if (response.ok) {
-			return await response.blob()
+	const urlsToTry = [url]
+	if (url.includes('1000x1000bb.jpg')) {
+		urlsToTry.push(url.replace('1000x1000bb.jpg', '600x600bb.jpg'))
+		urlsToTry.push(url.replace('1000x1000bb.jpg', '100x100bb.jpg'))
+	}
+	for (const u of urlsToTry) {
+		try {
+			const response = await fetch(u)
+			if (response.ok) {
+				return await response.blob()
+			}
+		} catch (e) {
+			console.error('Download artwork blob error for', u, e)
 		}
-	} catch (e) {
-		console.error('Download artwork blob error:', e)
 	}
 	return null
 }
@@ -114,15 +159,16 @@ export const autoApplyTrackMetadata = async (
 ): Promise<{ success: boolean; trackName?: string }> => {
 	try {
 		const db = await getDatabase()
-		const tx = db.transaction(['tracks', 'albums', 'artists'], 'readwrite')
-		const trackStore = tx.objectStore('tracks')
-		const track: Track | undefined = await trackStore.get(trackId)
+		const track: Track | undefined = await db.get('tracks', trackId)
 
 		if (!track) {
 			return { success: false }
 		}
 
-		const artistHint = track.artists && track.artists[0] !== UNKNOWN_ITEM ? track.artists[0] : undefined
+		const artistHint =
+			track.artists && track.artists[0] && !isInvalidArtist(track.artists[0])
+				? track.artists[0]
+				: undefined
 		const candidates = await fetchAutoMetadata(track.name || track.fileName || '', artistHint)
 
 		if (candidates.length === 0 || !candidates[0]) {
@@ -130,7 +176,10 @@ export const autoApplyTrackMetadata = async (
 		}
 
 		const best = candidates[0]
-		const artistsArray = best.artist.split(',').map((s) => s.trim()).filter(Boolean)
+		const artistsArray = best.artist
+			.split(',')
+			.map((s) => s.trim())
+			.filter(Boolean)
 		const genreArray = best.genre ? [best.genre] : track.genre || []
 
 		let artworkData: any = undefined
@@ -157,6 +206,8 @@ export const autoApplyTrackMetadata = async (
 			primaryColor: artworkData?.primaryColor ?? track.primaryColor,
 		}
 
+		const tx = db.transaction(['tracks', 'albums', 'artists'], 'readwrite')
+		const trackStore = tx.objectStore('tracks')
 		await trackStore.put(updatedTrack as any)
 
 		// Ensure album exists and is updated
@@ -212,10 +263,11 @@ export const autoApplyTrackMetadata = async (
 
 		// Automatically fetch lyrics for the updated track
 		try {
-			const localDb = await getDatabase()
-			await localDb.delete('lyrics', trackId)
+			await LyricsCache.clearForTrack(trackId)
 			await LyricsService.fetchLyrics(updatedTrack as any)
-			window.dispatchEvent(new CustomEvent('lyrics-reload'))
+			if (typeof window !== 'undefined') {
+				window.dispatchEvent(new CustomEvent('lyrics-reload'))
+			}
 		} catch (e) {
 			console.error('Error auto-fetching lyrics:', e)
 		}

@@ -1,5 +1,6 @@
 import { formatArtists } from '$lib/helpers/utils/text.ts'
 import type { TrackData } from '$lib/library/get/value-queries.ts'
+import { UNKNOWN_ITEM } from '$lib/library/types.ts'
 
 export interface ProviderResponse {
     rawLyrics: string
@@ -8,21 +9,48 @@ export interface ProviderResponse {
 }
 
 export class LyricsProvider {
-    static async getLyrics(track: TrackData, signal?: AbortSignal): Promise<ProviderResponse | null> {
-        const primary = await LyricsProvider.fetchFromAdi(track, signal)
-        if (primary) return primary
+    static async fetchByProviderId(
+        providerId: string,
+        track: TrackData,
+        signal?: AbortSignal
+    ): Promise<ProviderResponse | null> {
+        if (providerId === 'adi') return LyricsProvider.fetchFromAdi(track, signal)
+        if (providerId === 'lrcmux') return LyricsProvider.fetchFromLrcmux(track, signal)
+        if (providerId === 'lrclib') return LyricsProvider.fetchFromLrclib(track, signal)
+        if (providerId === 'am-lyrics' || providerId === 'am') return LyricsProvider.fetchFromAmLyrics(track, signal)
+        if (providerId === 'unison') return LyricsProvider.fetchFromUnison(track, signal)
 
-        const secondary = await LyricsProvider.fetchFromLrcmux(track, signal)
-        if (secondary) return secondary
+        if (typeof window !== 'undefined') {
+            try {
+                const rawCustoms = localStorage.getItem('snaeplayer-custom-lyrics-sources')
+                if (rawCustoms) {
+                    const customs: Array<{ id: string; name: string; url: string }> = JSON.parse(rawCustoms)
+                    const targetCustom = customs.find((cs) => cs.id === providerId)
+                    if (targetCustom) {
+                        return LyricsProvider.fetchFromCustomSource(track, targetCustom, signal)
+                    }
+                }
+            } catch {}
+        }
+        return null
+    }
 
-        const tertiary = await LyricsProvider.fetchFromLrclib(track, signal)
-        if (tertiary) return tertiary
+    static async getLyrics(
+        track: TrackData,
+        signal?: AbortSignal,
+        preferredProvider?: string
+    ): Promise<ProviderResponse | null> {
+        if (preferredProvider && preferredProvider !== 'auto' && preferredProvider !== 'uploaded') {
+            const preferredRes = await LyricsProvider.fetchByProviderId(preferredProvider, track, signal)
+            if (preferredRes) return preferredRes
+        }
 
-        const quaternary = await LyricsProvider.fetchFromAmLyrics(track, signal)
-        if (quaternary) return quaternary
-
-        const quinary = await LyricsProvider.fetchFromUnison(track, signal)
-        if (quinary) return quinary
+        const standardOrder = ['adi', 'lrcmux', 'lrclib', 'am-lyrics', 'unison']
+        for (const pid of standardOrder) {
+            if (preferredProvider && pid === preferredProvider) continue
+            const res = await LyricsProvider.fetchByProviderId(pid, track, signal)
+            if (res) return res
+        }
 
         return null
     }
@@ -144,7 +172,9 @@ export class LyricsProvider {
             const exactUrl = new URL('https://lrclib.net/api/get')
             exactUrl.searchParams.set('track_name', track.name)
             exactUrl.searchParams.set('artist_name', formatArtists(track.artists))
-            exactUrl.searchParams.set('album_name', track.album)
+            if (track.album && track.album !== UNKNOWN_ITEM) {
+                exactUrl.searchParams.set('album_name', track.album)
+            }
             exactUrl.searchParams.set('duration', String(durationSeconds))
 
             const exactResponse = await fetch(exactUrl, { signal })
@@ -228,7 +258,7 @@ export class LyricsProvider {
             biniUrl.searchParams.set('track', title)
             biniUrl.searchParams.set('artist', artist)
 
-            if (track.album) {
+            if (track.album && track.album !== UNKNOWN_ITEM) {
                 biniUrl.searchParams.set('album', track.album)
             }
 
@@ -322,7 +352,7 @@ export class LyricsProvider {
 
             urlStr = urlStr.replace('{title}', encodeURIComponent(track.name))
             urlStr = urlStr.replace('{artist}', encodeURIComponent(formatArtists(track.artists)))
-            urlStr = urlStr.replace('{album}', encodeURIComponent(track.album))
+            urlStr = urlStr.replace('{album}', encodeURIComponent(track.album && track.album !== UNKNOWN_ITEM ? track.album : ''))
             urlStr = urlStr.replace(
                 '{duration}',
                 encodeURIComponent(String(Math.round(track.duration)))

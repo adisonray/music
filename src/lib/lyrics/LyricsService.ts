@@ -2,7 +2,7 @@ import type { TrackData } from '$lib/library/get/value-queries.ts'
 import { getLocale } from '$paraglide/runtime.js'
 import { LyricsProvider } from './LyricsProvider.ts'
 import { LyricsParser } from './LyricsParser.ts'
-import { LyricsCache, type CachedLyricsResult } from './LyricsCache.ts'
+import { LyricsCache, getTrackProvider, type CachedLyricsResult } from './LyricsCache.ts'
 
 export type ServiceLyricsResult = CachedLyricsResult
 
@@ -22,20 +22,29 @@ export function getSourceDisplayName(source?: string): string {
 }
 
 export class LyricsService {
-    static async fetchLyrics(track: TrackData, signal?: AbortSignal): Promise<ServiceLyricsResult> {
+    static async fetchLyrics(
+        track: TrackData,
+        signal?: AbortSignal,
+        forcedProvider?: string
+    ): Promise<ServiceLyricsResult> {
+        const provider = forcedProvider || getTrackProvider(track.id)
         const language = getLocale()
-        const cached = await LyricsCache.get(track.id, language)
+        const cached = await LyricsCache.get(track.id, provider, language)
         if (cached) {
             return cached
         }
 
         try {
             const durationMs = Math.round(track.duration) * 1000
-            const response = await LyricsProvider.getLyrics(track, signal)
+            const response = await LyricsProvider.getLyrics(track, signal, provider)
             if (response) {
                 if (response.rawLyrics === 'Instrumental') {
-                    const result: ServiceLyricsResult = { status: 'instrumental', language }
-                    await LyricsCache.set(track.id, result)
+                    const result: ServiceLyricsResult = {
+                        status: 'instrumental',
+                        source: response.source || provider,
+                        language
+                    }
+                    await LyricsCache.set(track.id, result, provider)
                     return result
                 }
 
@@ -47,12 +56,12 @@ export class LyricsService {
                     syncType: response.isPlainOnly ? 'plain' : ttml.includes('<span') ? 'karaoke' : 'line',
                     language,
                 }
-                await LyricsCache.set(track.id, result)
+                await LyricsCache.set(track.id, result, provider)
                 return result
             }
 
-            const notFoundResult: ServiceLyricsResult = { status: 'not-found' }
-            await LyricsCache.set(track.id, { ...notFoundResult, language })
+            const notFoundResult: ServiceLyricsResult = { status: 'not-found', language }
+            await LyricsCache.set(track.id, notFoundResult, provider)
             return notFoundResult
 
         } catch (error) {

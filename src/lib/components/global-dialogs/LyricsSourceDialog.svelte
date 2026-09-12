@@ -7,9 +7,9 @@
 	import Spinner from '$lib/components/Spinner.svelte'
 	import Tabs from '$lib/components/Tabs.svelte'
 	import type { TrackData } from '$lib/library/get/value.ts'
-	import { LyricsCache, type CachedLyricsResult } from '$lib/lyrics/LyricsCache.ts'
+	import { LyricsCache, setTrackProvider, type CachedLyricsResult } from '$lib/lyrics/LyricsCache.ts'
 	import { LyricsParser } from '$lib/lyrics/LyricsParser.ts'
-	import { LyricsProvider } from '$lib/lyrics/LyricsProvider.ts'
+	import { LyricsService } from '$lib/lyrics/LyricsService.ts'
 
 	export interface LyricsSourceDialogProps {
 		open: DialogOpenAccessor<TrackData>
@@ -75,91 +75,24 @@
 		snackbar('Custom source deleted')
 	}
 
-	async function selectSource(sourceId: 'adi' | 'lrcmux' | 'unison' | 'lrclib' | string) {
+	async function selectSource(sourceId: 'adi' | 'lrcmux' | 'am-lyrics' | 'unison' | 'lrclib' | string) {
 		if (!track) return
 		fetching = true
 		activeFetchingSource = sourceId
 
 		try {
-			let result: CachedLyricsResult | null = null
-			const durationMs = Math.round(track.duration) * 1000
+			setTrackProvider(track.id, sourceId)
+			const res = await LyricsService.fetchLyrics(track, undefined, sourceId)
+			window.dispatchEvent(new CustomEvent('lyrics-reload'))
 
-			if (sourceId === 'adi') {
-				const resp = await LyricsProvider.fetchFromAdi(track)
-				if (resp) {
-					const lyrics = LyricsParser.parse(resp.rawLyrics, durationMs)
-					result = {
-						status: 'found',
-						source: 'adi',
-						lyrics,
-						syncType: resp.isPlainOnly ? 'plain' : 'karaoke',
-					}
-				}
-			} else if (sourceId === 'lrcmux') {
-				const resp = await LyricsProvider.fetchFromLrcmux(track)
-				if (resp) {
-					const lyrics = LyricsParser.parse(resp.rawLyrics, durationMs)
-					const hasWordTiming = lyrics.some((lyric) => lyric.parts && lyric.parts.length > 0)
-					result = {
-						status: 'found',
-						source: 'lrcmux',
-						lyrics,
-						syncType: hasWordTiming ? 'karaoke' : 'line',
-					}
-				}
-			} else if (sourceId === 'unison') {
-				const resp = await LyricsProvider.fetchFromUnison(track)
-				if (resp) {
-					const lyrics = LyricsParser.parse(resp.rawLyrics, durationMs)
-					const hasWordTiming = lyrics.some((lyric) => lyric.parts && lyric.parts.length > 0)
-					result = {
-						status: 'found',
-						source: 'unison',
-						lyrics,
-						syncType: hasWordTiming ? 'karaoke' : resp.isPlainOnly ? 'plain' : 'line',
-					}
-				}
-			} else if (sourceId === 'lrclib') {
-				const resp = await LyricsProvider.fetchFromLrclib(track)
-				if (resp) {
-					if (resp.rawLyrics === 'Instrumental') {
-						result = { status: 'instrumental' }
-					} else {
-						const lyrics = LyricsParser.parse(resp.rawLyrics, durationMs)
-						const hasWordTiming = lyrics.some((lyric) => lyric.parts && lyric.parts.length > 0)
-						result = {
-							status: 'found',
-							source: 'lrclib',
-							lyrics,
-							syncType: hasWordTiming ? 'karaoke' : resp.isPlainOnly ? 'plain' : 'line',
-						}
-					}
-				}
-			} else {
-				// Custom source
-				const custom = customSources.find((cs) => cs.id === sourceId)
-				if (custom) {
-					const resp = await LyricsProvider.fetchFromCustomSource(track, custom)
-					if (resp) {
-						const lyrics = LyricsParser.parse(resp.rawLyrics, durationMs)
-						result = {
-							status: 'found',
-							source: custom.name,
-							lyrics,
-							syncType: resp.isPlainOnly ? 'plain' : 'line',
-						}
-					}
-				}
-			}
-
-			if (result) {
-				await LyricsCache.set(track.id, result)
-				window.dispatchEvent(new CustomEvent('lyrics-reload'))
+			if (res.status === 'found') {
 				snackbar('Lyrics loaded successfully')
-				open.close()
+			} else if (res.status === 'instrumental') {
+				snackbar('Track is instrumental')
 			} else {
-				snackbar('Failed to fetch lyrics from this source')
+				snackbar('No lyrics found for this source')
 			}
+			open.close()
 		} catch (e) {
 			console.error(e)
 			snackbar('An error occurred while fetching lyrics')
@@ -172,9 +105,7 @@
 	async function resetToDefault() {
 		if (!track) return
 		try {
-			// Clear cache entry to trigger standard priority searching chain
-			const db = await (await import('$lib/db/database.ts')).getDatabase()
-			await db.delete('lyrics', track.id)
+			await LyricsCache.clearForTrack(track.id)
 			window.dispatchEvent(new CustomEvent('lyrics-reload'))
 			snackbar('Lyrics reset to default search')
 			open.close()
@@ -200,15 +131,16 @@
 
 			try {
 				const durationMs = Math.round(track.duration) * 1000
-				const lyrics = LyricsParser.parse(text, durationMs)
+				const ttml = LyricsParser.toTTML(text, durationMs)
 				const isPlainOnly = !text.includes('[') && !text.includes('<tt')
 				const result: CachedLyricsResult = {
 					status: 'found',
 					source: 'uploaded',
-					lyrics,
-					syncType: isPlainOnly ? 'plain' : 'line',
+					ttml,
+					syncType: isPlainOnly ? 'plain' : ttml.includes('<span') ? 'karaoke' : 'line',
 				}
-				await LyricsCache.set(track.id, result)
+				setTrackProvider(track.id, 'uploaded')
+				await LyricsCache.set(track.id, result, 'uploaded')
 				window.dispatchEvent(new CustomEvent('lyrics-reload'))
 				snackbar('Lyrics uploaded successfully')
 				open.close()
@@ -302,6 +234,24 @@
 									<span class="text-body-small text-onSurfaceVariant">Secondary Provider</span>
 								</div>
 								{#if fetching && activeFetchingSource === 'lrcmux'}
+									<Spinner class="size-5" />
+								{:else}
+									<Icon type="chevronRight" class="text-onSurfaceVariant size-5" />
+								{/if}
+							</button>
+
+							<!-- AM Lyrics -->
+							<button
+								type="button"
+								disabled={fetching}
+								class="interactable flex items-center justify-between rounded-xl bg-surfaceContainerLow p-4 text-left transition-colors hover:bg-surfaceContainer"
+								onclick={() => selectSource('am-lyrics')}
+							>
+								<div class="flex flex-col">
+									<span class="text-body-large font-bold">AM Lyrics</span>
+									<span class="text-body-small text-onSurfaceVariant">Apple Music Provider</span>
+								</div>
+								{#if fetching && activeFetchingSource === 'am-lyrics'}
 									<Spinner class="size-5" />
 								{:else}
 									<Icon type="chevronRight" class="text-onSurfaceVariant size-5" />
