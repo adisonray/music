@@ -1,13 +1,13 @@
 <script lang="ts" module>
 	import Button from '$lib/components/Button.svelte'
 	import Dialog, { type DialogOpenAccessor } from '$lib/components/dialog/Dialog.svelte'
-	import Separator from '$lib/components/Separator.svelte'
-	import TextField from '$lib/components/TextField.svelte'
 	import Icon from '$lib/components/icon/Icon.svelte'
+	import Separator from '$lib/components/Separator.svelte'
 	import Spinner from '$lib/components/Spinner.svelte'
 	import Tabs from '$lib/components/Tabs.svelte'
+	import TextField from '$lib/components/TextField.svelte'
 	import type { TrackData } from '$lib/library/get/value.ts'
-	import { LyricsCache, setTrackProvider, type CachedLyricsResult } from '$lib/lyrics/LyricsCache.ts'
+	import { type CachedLyricsResult, LyricsCache, setTrackProvider } from '$lib/lyrics/LyricsCache.ts'
 	import { LyricsParser } from '$lib/lyrics/LyricsParser.ts'
 	import { LyricsService } from '$lib/lyrics/LyricsService.ts'
 
@@ -53,7 +53,7 @@
 	}
 
 	function addCustomSource() {
-		if (!newSourceName.trim() || !newSourceUrl.trim()) {
+		if (!(newSourceName.trim() && newSourceUrl.trim())) {
 			snackbar('Please fill out both Name and URL')
 			return
 		}
@@ -87,12 +87,14 @@
 
 			if (res.status === 'found') {
 				snackbar('Lyrics loaded successfully')
+				open.close()
 			} else if (res.status === 'instrumental') {
 				snackbar('Track is instrumental')
+				open.close()
 			} else {
+				// Leave the dialog open so the user can try another source
 				snackbar('No lyrics found for this source')
 			}
-			open.close()
 		} catch (e) {
 			console.error(e)
 			snackbar('An error occurred while fetching lyrics')
@@ -132,7 +134,7 @@
 			try {
 				const durationMs = Math.round(track.duration) * 1000
 				const ttml = LyricsParser.toTTML(text, durationMs)
-				const isPlainOnly = !text.includes('[') && !text.includes('<tt')
+				const isPlainOnly = !(text.includes('[') || text.includes('<tt'))
 				const result: CachedLyricsResult = {
 					status: 'found',
 					source: 'uploaded',

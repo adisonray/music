@@ -28,6 +28,7 @@
 	"dependencies": {
 		"@material/material-color-utilities": "^0.4.0",
 		"@tanstack/virtual-core": "^3.13.23",
+		"@uimaxbai/am-lyrics": "^1.6.3",
 		"idb": "^8.0.3",
 		"music-metadata": "^11.12.3",
 		"tiny-invariant": "^1.3.3",
@@ -87,7 +88,13 @@ src/
 │   │   ├── tracks-queries.ts
 │   │   └── types.ts
 │   ├── helpers/                   # Utility functions
-│   └── attachments/               # Svelte element attachments (ripple, tooltip)
+│   ├── attachments/               # Svelte element attachments (ripple, tooltip)
+│   └── lyrics/                    # Lyrics subsystem (see Lyrics section below)
+│       ├── LyricsProvider.ts      # HTTP fetching from all providers
+│       ├── LyricsService.ts       # Orchestration: cache → fetch → parse → store
+│       ├── LyricsParser.ts        # LRC / QRC / TTML → TTML normalisation
+│       ├── LyricsCache.ts         # IndexedDB cache (7-day TTL) + per-track provider preference
+│       └── LyricsRenderer.svelte  # <am-lyrics> web-component wrapper
 tests/
 ├── lib/
 │   └── library/                   # Library functionality tests
@@ -578,6 +585,76 @@ pnpm run test         # Run tests
 - **Types**: `kebab-case.ts`
 - **Stores**: `kebab-case.svelte.ts`
 
+## Lyrics Subsystem
+
+All lyrics logic lives in `src/lib/lyrics/`. Adi Music fetches lyrics server-side, converts everything to TTML, and feeds it to the `<am-lyrics>` web component purely as a renderer. The component's own built-in LyricsPlus/Apple Music lookup is a secondary fallback activated automatically when `ttml` is absent.
+
+### Providers (priority order)
+
+| ID | Display name | Endpoint |
+|---|---|---|
+| `adi` | Adi Lyrics | `https://lyrics.imreallyadi.space` |
+| `lrcmux` | LRC Mux | `https://api.lrcmux.dev` |
+| `lrclib` | LRCLIB | `https://lrclib.net` |
+| `am-lyrics` | AM Lyrics | `https://lyrics-api.binimum.org` (Binimum cache API) |
+| `unison` | Unison | `https://unison.boidu.dev` |
+
+**Adi Lyrics and AM Lyrics (Binimum) are completely independent providers. Never merge them or use one as a fallback for the other.**
+
+The default auto-search order is `['adi', 'lrcmux', 'lrclib', 'am-lyrics', 'unison']`. Users can override the provider per-track via the lyrics source dialog (triple-click the source badge in the lyrics panel).
+
+### Per-track provider preference
+
+Stored in `localStorage` under `snaeplayer-lyrics-provider-{trackId}`. Use `setTrackProvider` / `getTrackProvider` / `clearTrackProvider` from `LyricsCache.ts`.
+
+### Cache
+
+IndexedDB store `lyrics`, keyed `{trackId}:{provider}` (or `{trackId}:auto` for the default). 7-day TTL except for `source: 'uploaded'` which never expires. Version constant `CACHE_VERSION` in `LyricsCache.ts` — bump it when the stored shape changes.
+
+### Binimum / am-lyrics fetch details (`LyricsProvider.fetchFromAmLyrics`)
+
+- Calls `https://lyrics-api.binimum.org/?track={title}&artist={artist}&album={album}&duration={seconds}`
+- `duration` is passed in **seconds** (`Math.round(track.duration)`) — `track.duration` is stored in seconds
+- Returns a `results[0].lyricsUrl` pointing to a TTML file; fetches that file and returns raw TTML
+- All failure paths emit `console.debug` / `console.warn` tagged `[am-lyrics]` — check the browser console to trace which step fails
+
+### `LyricsRenderer.svelte` — `<am-lyrics>` wrapper
+
+```svelte
+<LyricsRenderer
+  ttml={result.ttml}
+  audioElement={player.audioElement}
+  songTitle={track.name}
+  songArtist={formatArtists(track.artists)}
+  songAlbum={track.album !== UNKNOWN_ITEM ? track.album : undefined}
+  songDurationMs={Math.round(track.duration * 1000)}
+  query="{track.name} - {formatArtists(track.artists)}"
+/>
+```
+
+- `ttml` — pre-fetched TTML string; when present the component renders it directly and skips all network requests
+- `song-title` / `song-artist` / `song-album` / `song-duration` / `query` — forwarded as HTML attributes so the component can run its own LyricsPlus → Binimum → LRCLIB fallback chain when `ttml` is null
+- `currentTime` is set **imperatively in milliseconds** via `el.currentTime = Math.floor(audio.currentTime * 1000)` inside a `requestAnimationFrame` loop — never bind it declaratively
+- The component fires `line-click` with `{ detail: { timestamp: number } }` (ms) — handled to seek the audio element
+
+### CSP (`svelte.config.js`)
+
+All Binimum/am-lyrics endpoints must appear in `connect-src`:
+
+```
+https://lyrics-api.binimum.org          # Binimum cache API
+https://lyricsplus.binimum.org          # Primary KPOE server
+https://lyricsplus-seven.vercel.app     # Secondary KPOE server
+https://lyricsplus.prjktla.workers.dev  # Tertiary KPOE server
+https://lyrics-plus-backend.vercel.app  # Quaternary KPOE server
+https://fetch-genius.samidy.workers.dev # Genius plain-lyrics fallback
+https://translate.googleapis.com        # Romanization for CJK tracks
+```
+
+### `svelte.config.js` — `experimental.async`
+
+`compilerOptions.experimental.async` **must stay `true`**. The codebase uses `await` inside `$derived(await ...)` (e.g. `AddToPlaylistDialogContent.svelte`). Removing it breaks the production build even though Svelte 5.36+ enables async support by default in the compiler — the Rolldown / vite-plugin-svelte pipeline still enforces the explicit opt-in flag.
+
 ## Key Files Reference
 
 ### Configuration
@@ -590,10 +667,15 @@ pnpm run test         # Run tests
 
 - `src/app.css` - Design system and global styles
 - `src/theme-colors.css` - Color design tokens (camelCase names)
-- `src/app.d.ts` - Global TypeScript definitions
+- `src/app.d.ts` - Global TypeScript definitions (includes `<am-lyrics>` element types)
 - `src/app.html` - HTML template
 - `src/lib/stores/` - Global state management
 - `src/lib/db/database.ts` - IndexedDB setup
+- `src/lib/lyrics/LyricsProvider.ts` - All lyrics provider HTTP logic
+- `src/lib/lyrics/LyricsService.ts` - Lyrics orchestration layer
+- `src/lib/lyrics/LyricsRenderer.svelte` - `<am-lyrics>` web component wrapper
+- `src/lib/components/player/SyncedLyrics.svelte` - Lyrics panel (fetches + renders)
+- `src/lib/components/global-dialogs/LyricsSourceDialog.svelte` - Provider picker (triple-click source badge)
 
 ## Marketing Copy
 

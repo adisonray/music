@@ -4,7 +4,7 @@ import { getDatabase } from '$lib/db/database.ts'
 import { clearDatabaseStores } from '$lib/helpers/test-helpers.ts'
 import type { TrackData } from '$lib/library/get/value-queries.ts'
 import { UNKNOWN_ITEM } from '$lib/library/types.ts'
-import { LyricsCache, CACHE_VERSION, setTrackProvider, clearTrackProvider } from '../LyricsCache.ts'
+import { CACHE_VERSION, clearTrackProvider, LyricsCache, setTrackProvider } from '../LyricsCache.ts'
 import { LyricsParser } from '../LyricsParser.ts'
 import { LyricsService } from '../LyricsService.ts'
 
@@ -168,7 +168,8 @@ describe('AM Lyrics System', () => {
 	})
 
 	it('only includes Adi Chinese translations for Chinese locales', () => {
-		const rawTtml = '<tt><body><p><span>Original</span><span ttm:role="x-translation" xml:lang="zh-CN">中文</span></p></body></tt>'
+		const rawTtml =
+			'<tt><body><p><span>Original</span><span ttm:role="x-translation" xml:lang="zh-CN">中文</span></p></body></tt>'
 
 		expect(LyricsParser.toTTML(rawTtml, 10_000, 'en')).not.toContain('中文')
 		expect(LyricsParser.toTTML(rawTtml, 10_000, 'zh-CN')).toContain('中文')
@@ -225,7 +226,11 @@ describe('AM Lyrics System', () => {
 				.mockResolvedValueOnce(
 					jsonResponse({
 						ok: true,
-						lyric: { format: 'ttml', rawContent: '<tt>Adi Content</tt>' },
+						lyric: {
+							format: 'ttml',
+							rawContent:
+								'<tt xmlns="http://www.w3.org/ns/ttml"><body><div><p begin="00:00.000" end="00:04.000">Adi Content</p></div></body></tt>',
+						},
 					}),
 				)
 			vi.stubGlobal('fetch', fetchMockAdi)
@@ -270,11 +275,17 @@ describe('AM Lyrics System', () => {
 				.fn<typeof fetch>()
 				.mockResolvedValueOnce(new Response(null, { status: 404 })) // LRCLIB exact
 				.mockResolvedValueOnce(jsonResponse([])) // LRCLIB search
-				.mockResolvedValueOnce(jsonResponse({ ok: true, results: [{ id: 'adi-fallback' }] })) // Adi search
+				.mockResolvedValueOnce(
+					jsonResponse({ ok: true, results: [{ id: 'adi-fallback' }] }),
+				) // Adi search
 				.mockResolvedValueOnce(
 					jsonResponse({
 						ok: true,
-						lyric: { format: 'ttml', rawContent: '<tt>Adi Fallback Content</tt>' },
+						lyric: {
+							format: 'ttml',
+							rawContent:
+								'<tt xmlns="http://www.w3.org/ns/ttml"><body><div><p begin="00:00.000" end="00:04.000">Adi Fallback Content</p></div></body></tt>',
+						},
 					}),
 				) // Adi fetch
 			vi.stubGlobal('fetch', fetchMock)

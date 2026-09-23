@@ -42,9 +42,7 @@ const config = {
 					'blob:',
 					'data:',
 
-					env.PUBLIC_GOAT_COUNTER_URL
-						? `${env.PUBLIC_GOAT_COUNTER_URL}/count`
-						: '',
+					env.PUBLIC_GOAT_COUNTER_URL ? `${env.PUBLIC_GOAT_COUNTER_URL}/count` : '',
 
 					// JioSaavn
 					'https://*.jiosaavncdn.com',
@@ -93,10 +91,19 @@ const config = {
 					'https://lyrics.imreallyadi.space',
 					'https://lyrics-api.boidu.dev',
 					'https://lrclib.net',
-					'https://lyricsplus.prjktla.workers.dev',
 					'https://unison.boidu.dev',
 					'https://api.lrcmux.dev',
+
+					// Binimum / am-lyrics: cache API + LyricsPlus KPOE servers + Genius fallback
 					'https://lyrics-api.binimum.org',
+					'https://lyricsplus.binimum.org',
+					'https://lyricsplus-seven.vercel.app',
+					'https://lyricsplus.prjktla.workers.dev',
+					'https://lyrics-plus-backend.vercel.app',
+					'https://fetch-genius.samidy.workers.dev',
+
+					// Romanization (used by am-lyrics for CJK tracks)
+					'https://translate.googleapis.com',
 
 					// JioSaavn API
 					'https://jiosaavn-apix.arcadopredator.workers.dev',

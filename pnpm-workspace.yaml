@@ -1,3 +1,6 @@
+packages:
+  - '.'
+
 allowBuilds:
   '@biomejs/biome': false
   '@tailwindcss/oxide': false
@@ -5,3 +8,4 @@ engineStrict: true
 
 patchedDependencies:
   '@material/material-color-utilities': 'patches/@material__material-color-utilities.patch'
+  '@uimaxbai/am-lyrics': patches/@uimaxbai__am-lyrics.patch

@@ -1,7 +1,7 @@
 import { getDatabase } from '$lib/db/database.ts'
 import { dispatchDatabaseChangedEvent } from '$lib/db/events.ts'
 import { getArtworkRelatedData } from '$lib/library/scan-actions/scanner/parse/format-artwork.ts'
-import { UNKNOWN_ITEM, type Track } from '$lib/library/types.ts'
+import { type Track, UNKNOWN_ITEM } from '$lib/library/types.ts'
 import { LyricsCache } from '$lib/lyrics/LyricsCache.ts'
 import { LyricsService } from '$lib/lyrics/LyricsService.ts'
 import { searchSongs } from '$lib/services/jiosaavn.ts'
@@ -21,7 +21,8 @@ export interface AutoMetadataResult {
 	source: 'itunes' | 'jiosaavn'
 }
 
-export const cleanQueryString = (raw: string): string => {
+export const cleanQueryString = (raw: string | null | undefined): string => {
+	if (!raw) return ''
 	let str = raw.replace(/\.(mp3|flac|m4a|wav|ogg|aac|alac|aiff|wma|opus)$/i, '')
 	// Replace underscores
 	str = str.replace(/_/g, ' ')
@@ -101,10 +102,10 @@ const doFetchAutoMetadata = async (
 						: undefined
 			results.push({
 				title: song.name,
-				artist: song.artists.join(', '),
-				album: song.album,
-				albumArtist: song.artists[0],
-				year: song.year,
+				artist: song.artists.filter((a) => a !== UNKNOWN_ITEM).join(', '),
+				album: song.album === UNKNOWN_ITEM ? '' : song.album,
+				albumArtist: song.artists.find((a) => a !== UNKNOWN_ITEM),
+				year: song.year === UNKNOWN_ITEM ? undefined : song.year,
 				artworkUrl: artwork,
 				source: 'jiosaavn',
 			})
@@ -182,7 +183,7 @@ export const autoApplyTrackMetadata = async (
 			.filter(Boolean)
 		const genreArray = best.genre ? [best.genre] : track.genre || []
 
-		let artworkData: any = undefined
+		let artworkData: any
 		if (best.artworkUrl) {
 			const blob = await downloadArtworkBlob(best.artworkUrl)
 			if (blob) {
@@ -218,9 +219,9 @@ export const autoApplyTrackMetadata = async (
 			const updatedAlbum = existingAlbum
 				? {
 						...existingAlbum,
-						artists: [...new Set([...existingAlbum.artists, ...updatedTrack.artists])].filter(
-							(artist) => artist !== UNKNOWN_ITEM,
-						),
+						artists: [
+							...new Set([...existingAlbum.artists, ...updatedTrack.artists]),
+						].filter((artist) => artist !== UNKNOWN_ITEM),
 						year: existingAlbum.year || updatedTrack.year,
 						image: existingAlbum.image || updatedTrack.image?.full,
 					}

@@ -91,11 +91,16 @@ declare global {
 				'song-album'?: string
 				songwriters?: string
 				'song-duration'?: number
+				query?: string
+				isrc?: string
+				'music-id'?: string
 				'highlight-color'?: string
 				'font-family'?: string
-				currenttime?: number
+				'current-time'?: number
+				autoscroll?: boolean
+				interpolate?: boolean
 				class?: string
-				online-click?: (e: CustomEvent<{ timestamp: number }>) => void
+				'online-click'?: (e: CustomEvent<{ timestamp: number }>) => void
 			} & svelteHTML.HTMLAttributes<HTMLElement>
 		}
 	}

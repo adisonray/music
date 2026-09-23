@@ -12,7 +12,7 @@
     import { LyricsCache } from '$lib/lyrics/LyricsCache.ts'
     import { LyricsParser } from '$lib/lyrics/LyricsParser.ts'
     import { LyricsService } from '$lib/lyrics/LyricsService.ts'
-    import { fetchAutoMetadata, downloadArtworkBlob } from '$lib/services/auto-metadata.ts'
+    import { downloadArtworkBlob, fetchAutoMetadata } from '$lib/services/auto-metadata.ts'
     import Artwork from '../Artwork.svelte'
 
     export interface TrackMetadataDialogProps {
@@ -89,7 +89,7 @@
         if (!track) return
         isAutoFetching = true
         try {
-            const query = titleVal.trim() || track.fileName || track.name
+            const query = titleVal.trim() || track.fileName || track.name || ''
             const artistHint = artistVal.trim() && artistVal !== UNKNOWN_ITEM ? artistVal.trim() : undefined
             const results = await fetchAutoMetadata(query, artistHint)
 

@@ -4,10 +4,20 @@
 	interface Props {
 		ttml: string | null
 		audioElement: HTMLAudioElement | null
+		/** Song title — forwarded to <am-lyrics> so it can run its own LyricsPlus lookup if ttml is absent */
+		songTitle?: string
+		/** Comma-separated artist string */
+		songArtist?: string
+		/** Album name (optional) */
+		songAlbum?: string
+		/** Song duration in milliseconds */
+		songDurationMs?: number
+		/** "Title - Artist" search phrase for the LyricsPlus catalog fallback */
+		query?: string
 		class?: string
 	}
 
-	let { ttml, audioElement, class: className }: Props = $props()
+	let { ttml, audioElement, songTitle, songArtist, songAlbum, songDurationMs, query, class: className }: Props = $props()
 
 	let el: HTMLElement | undefined = $state()
 
@@ -17,8 +27,21 @@
 
 	$effect(() => {
 		const currentEl = el
+		if (currentEl?.shadowRoot) {
+			const styleId = 'am-lyrics-hide-watermark'
+			if (!currentEl.shadowRoot.getElementById(styleId)) {
+				const style = document.createElement('style')
+				style.id = styleId
+				style.textContent = '.version-info { display: none !important; }'
+				currentEl.shadowRoot.appendChild(style)
+			}
+		}
+	})
+
+	$effect(() => {
+		const currentEl = el
 		const currentAudio = audioElement
-		if (!currentEl || !currentAudio) return
+		if (!(currentEl && currentAudio)) return
 
 		let frameId: number
 
@@ -78,7 +101,16 @@
 	})
 </script>
 
-<am-lyrics bind:this={el} ttml={ttml ?? undefined} font-family="var(--font-sans)" class={className}
+<am-lyrics
+	bind:this={el}
+	ttml={ttml ?? undefined}
+	song-title={songTitle}
+	song-artist={songArtist}
+	song-album={songAlbum}
+	song-duration={songDurationMs}
+	query={query}
+	font-family="var(--font-sans)"
+	class={className}
 ></am-lyrics>
 
 <style lang="postcss">
