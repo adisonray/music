@@ -9,6 +9,7 @@ export type ServiceLyricsResult = CachedLyricsResult
 export function getSourceDisplayName(source?: string): string {
 	if (!source) return 'Unknown'
 	const s = source.toLowerCase()
+	if (s === 'amll') return 'AMLL'
 	if (s === 'adi') return 'Adi Lyrics'
 	if (s === 'am-lyrics' || s === 'am' || s === 'binimum' || s === 'bini') return 'AM Lyrics'
 	if (s === 'lrcmux') return 'LRC Mux'

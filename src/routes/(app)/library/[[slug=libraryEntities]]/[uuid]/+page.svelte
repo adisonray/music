@@ -170,7 +170,10 @@
 		>
 			<div class="flex grow flex-col p-4">
 				<div class="flex items-center gap-2">
-					<Icon type="playlist" class="size-10 text-onSurface/54" />
+					<Icon
+						type={slug === 'albums' ? 'album' : slug === 'artists' ? 'person' : 'playlist'}
+						class="size-10 text-onSurface/54"
+					/>
 
 					<h1 class="text-headline-md">{formatNameOrUnknown(item.name)}</h1>
 				</div>

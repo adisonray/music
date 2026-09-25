@@ -17,7 +17,16 @@
 		class?: string
 	}
 
-	let { ttml, audioElement, songTitle, songArtist, songAlbum, songDurationMs, query, class: className }: Props = $props()
+	let {
+		ttml,
+		audioElement,
+		songTitle,
+		songArtist,
+		songAlbum,
+		songDurationMs,
+		query,
+		class: className,
+	}: Props = $props()
 
 	let el: HTMLElement | undefined = $state()
 
@@ -56,7 +65,9 @@
 		}
 
 		const handleTimeUpdate = () => {
-			;(currentEl as any).currentTime = Math.floor(currentAudio.currentTime * 1000)
+			if (currentAudio.paused) {
+				;(currentEl as any).currentTime = Math.floor(currentAudio.currentTime * 1000)
+			}
 		}
 
 		const handlePlay = () => {
@@ -108,7 +119,7 @@
 	song-artist={songArtist}
 	song-album={songAlbum}
 	song-duration={songDurationMs}
-	query={query}
+	{query}
 	font-family="var(--font-sans)"
 	class={className}
 ></am-lyrics>

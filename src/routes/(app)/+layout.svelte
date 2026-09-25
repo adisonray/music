@@ -36,6 +36,16 @@
         (window as any).dialogs = dialogs;
     }
 
+    const syncNetworkState = () => {
+        document.documentElement.toggleAttribute('data-offline', !navigator.onLine)
+    }
+
+    if (browser) {
+        syncNetworkState()
+        window.addEventListener('online', syncNetworkState)
+        window.addEventListener('offline', syncNetworkState)
+    }
+
     setupTheme()
     setupGlobalMenu()
     setupAppInstallPromptListeners()
@@ -143,18 +153,25 @@
 {/snippet}
 
 <svelte:window
-    ondragover={handleDragOver}
-    ondragenter={handleDragEnter}
-    ondragleave={handleDragLeave}
-    ondrop={handleDrop}
-    onkeydown={(e) => {
-        if (e.key === ' ' && !isElementTextInput(e.target)) {
-            e.preventDefault()
+        ondragover={handleDragOver}
+        ondragenter={handleDragEnter}
+        ondragleave={handleDragLeave}
+        ondrop={handleDrop}
+        onkeydown={(e) => {
+            if (e.key !== ' ' || e.repeat || isElementTextInput(e.target)) {
+                return
+            }
 
+            // AeroUI handles Space itself when a player button is focused.
+            // Ignore it here so the global shortcut never double-toggles.
+            if (e.target instanceof Element && e.target.closest('.aero-player')) {
+                return
+            }
+
+            e.preventDefault()
             player.togglePlay()
-        }
-    }}
-/>
+        }}
+    />
 
 {#if isDraggingFiles}
     <div
@@ -310,5 +327,8 @@
         &::view-transition-old(bottom-bar):only-child {
             animation: view-bottom-bar-out 300ms var(--ease-standard) forwards;
         }
+    }
+    :global(html[data-offline] a[href="/discovery"]) {
+        display: none !important;
     }
 </style>

@@ -172,7 +172,10 @@ describe('AM Lyrics System', () => {
 			'<tt><body><p><span>Original</span><span ttm:role="x-translation" xml:lang="zh-CN">中文</span></p></body></tt>'
 
 		expect(LyricsParser.toTTML(rawTtml, 10_000, 'en')).not.toContain('中文')
+		expect(LyricsParser.toTTML(rawTtml, 10_000, 'de')).not.toContain('中文')
+		expect(LyricsParser.toTTML(rawTtml, 10_000, 'zh')).toContain('中文')
 		expect(LyricsParser.toTTML(rawTtml, 10_000, 'zh-CN')).toContain('中文')
+		expect(LyricsParser.toTTML(rawTtml, 10_000, 'zh-TW')).toContain('中文')
 	})
 
 	it('falls back to plain lyrics when no synchronized lyrics are found', async () => {
@@ -298,7 +301,7 @@ describe('AM Lyrics System', () => {
 			clearTrackProvider(track.id)
 		})
 
-		it('exempts uploaded lyrics from expiration and expires regular lyrics correctly', async () => {
+		it('keeps found lyrics indefinitely while expiring not-found or error results after 7 days', async () => {
 			const db = await getDatabase()
 
 			// 1. Set an uploaded lyric that is 10 days old
@@ -314,7 +317,7 @@ describe('AM Lyrics System', () => {
 				cachedAt: Date.now() - 1000 * 60 * 60 * 24 * 10, // 10 days old
 			} as any)
 
-			// 2. Set an adi lyric that is 10 days old
+			// 2. Set a found adi lyric that is 10 days old (should NOT expire now)
 			await db.add('lyrics', {
 				trackId: 20,
 				data: {
@@ -327,15 +330,31 @@ describe('AM Lyrics System', () => {
 				cachedAt: Date.now() - 1000 * 60 * 60 * 24 * 10, // 10 days old
 			} as any)
 
-			// 3. Retrieve uploaded lyric
+			// 3. Set a not-found result that is 10 days old (should expire)
+			await db.add('lyrics', {
+				trackId: 30,
+				data: {
+					status: 'not-found',
+				},
+				version: CACHE_VERSION,
+				cachedAt: Date.now() - 1000 * 60 * 60 * 24 * 10, // 10 days old
+			} as any)
+
+			// Retrieve uploaded lyric
 			const uploadedResult = await LyricsCache.get(10)
 			expect(uploadedResult).toBeDefined()
 			expect(uploadedResult?.source).toBe('uploaded')
 			expect(uploadedResult?.ttml).toContain('Uploaded lyric text')
 
-			// 4. Retrieve regular lyric (should be expired)
+			// Retrieve found regular lyric (should NOT be expired)
 			const adiResult = await LyricsCache.get(20)
-			expect(adiResult).toBeUndefined()
+			expect(adiResult).toBeDefined()
+			expect(adiResult?.source).toBe('adi')
+			expect(adiResult?.ttml).toContain('Adi lyric text')
+
+			// Retrieve not-found lyric (should be expired)
+			const notFoundResult = await LyricsCache.get(30)
+			expect(notFoundResult).toBeUndefined()
 		})
 	})
 })

@@ -53,11 +53,15 @@ export class LyricsCache {
 				return undefined
 			}
 
-			const isUploaded = (cached.data as any)?.source === 'uploaded'
-			if (!isUploaded && Date.now() - cached.cachedAt > CACHE_TTL_MS) {
+			const data = cached.data as CachedLyricsResult
+			const isUploaded = data?.source === 'uploaded'
+			const hasLyrics = data.status === 'found' || data.status === 'instrumental' || isUploaded
+
+			// Only expire cached entries that never had lyrics (i.e. 'not-found' or 'error')
+			if (!hasLyrics && Date.now() - cached.cachedAt > CACHE_TTL_MS) {
 				return undefined
 			}
-			if (!isUploaded && language && (cached.data as CachedLyricsResult).language !== language) {
+			if (!isUploaded && language && data.language !== language) {
 				return undefined
 			}
 

@@ -111,30 +111,37 @@
 		}
 
 		if (srcVal && el && shouldShowAnimated && isM3u8 && !canPlayHLS()) {
-			import('hls.js').then(({ default: Hls }) => {
-				if (!Hls.isSupported()) {
-					animatedError = true
-					onVideoError?.()
-					return
-				}
-
-				hlsInstance = new Hls({
-					capLevelToPlayerSize: true,
-					maxBufferLength: 5,
-				})
-				hlsInstance.loadSource(srcVal)
-				hlsInstance.attachMedia(el)
-				hlsInstance.on(Hls.Events.ERROR, (_event: any, data: any) => {
-					if (data.fatal) {
+			import('hls.js')
+				.then(({ default: Hls }) => {
+					if (!Hls.isSupported()) {
 						animatedError = true
 						onVideoError?.()
+						return
 					}
+
+					hlsInstance = new Hls({
+						capLevelToPlayerSize: true,
+						maxBufferLength: 5,
+					})
+					hlsInstance.loadSource(srcVal)
+					hlsInstance.attachMedia(el)
+					hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+						el.play().catch((err: unknown) => {
+							console.warn('Failed to play HLS video artwork:', err)
+						})
+					})
+					hlsInstance.on(Hls.Events.ERROR, (_event: any, data: any) => {
+						if (data.fatal) {
+							animatedError = true
+							onVideoError?.()
+						}
+					})
 				})
-			}).catch((err) => {
-				console.error('Failed to load hls.js', err)
-				animatedError = true
-				onVideoError?.()
-			})
+				.catch((err) => {
+					console.error('Failed to load hls.js', err)
+					animatedError = true
+					onVideoError?.()
+				})
 		}
 
 		return () => {
@@ -198,7 +205,7 @@
 		{#key animatedSrc}
 			<video
 				bind:this={videoElement}
-				src={(!animatedSrc?.endsWith('.m3u8') || canPlayHLS()) ? animatedSrc : undefined}
+				src={!animatedSrc?.endsWith('.m3u8') || canPlayHLS() ? animatedSrc : undefined}
 				autoplay
 				loop
 				muted
@@ -214,8 +221,16 @@
 					}
 				}}
 				onloadeddata={() => {
-					videoLoaded = true
-					onVideoLoad?.()
+					if (!videoLoaded) {
+						videoLoaded = true
+						onVideoLoad?.()
+					}
+				}}
+				oncanplay={() => {
+					if (!videoLoaded) {
+						videoLoaded = true
+						onVideoLoad?.()
+					}
 				}}
 			></video>
 		{/key}

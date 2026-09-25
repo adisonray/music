@@ -93,8 +93,6 @@
 	</div>
 {/snippet}
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <section
 	class={[
 		'lyrics-shell relative h-full w-full overflow-hidden bg-transparent',
@@ -102,6 +100,12 @@
 		className,
 	]}
 	aria-live="polite"
+	role="button"
+	tabindex="0"
+	onkeydown={(e) => {
+		if (e.key === 'Enter' || e.key === ' ') e.preventDefault()
+		if (e.key === 'Enter' && track) dialogs.openDialog('lyricsSource', track)
+	}}
 	onclick={(e) => {
 		if (e.detail === 3 && track) {
 			dialogs.openDialog('lyricsSource', track)

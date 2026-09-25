@@ -93,6 +93,17 @@
 			</div>
 		</Button>
 	{/each}
+	<Button
+		as="a"
+		href="/discovery"
+		kind="blank"
+		tooltip="Discovery"
+		class={['flex shrink-0 items-center justify-center', className]}
+	>
+		<div class="flex items-center justify-center rounded-full p-2">
+			<Icon type="compass" />
+		</div>
+	</Button>
 {/snippet}
 
 {#snippet layoutBottom()}

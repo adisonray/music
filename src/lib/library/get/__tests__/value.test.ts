@@ -8,6 +8,8 @@ import {
 	getLibraryValue,
 	LibraryValueNotFoundError,
 	preloadLibraryValue,
+	registerRemoteTrack,
+	unregisterRemoteTrack,
 	shouldRefetchLibraryValue,
 } from '$lib/library/get/value.ts'
 import { FAVORITE_PLAYLIST_ID, FAVORITE_PLAYLIST_UUID } from '$lib/library/types.ts'
@@ -116,6 +118,37 @@ describe('getLibraryValue', () => {
 		it('should return undefined for non-existent track when allowEmpty is true', async () => {
 			const result = await getLibraryValue('tracks', 999, true)
 			expect(result).toBeUndefined()
+		})
+
+		it('should restore persisted remote tracks after the in-memory map is cleared', async () => {
+			const remoteTrack = {
+				id: -1017,
+				remoteId: 1687014447,
+				streaming: true,
+				uuid: 'spicyamll:1687014447',
+				name: 'Remote Track',
+				album: 'Remote Album',
+				artists: ['Remote Artist'],
+				year: '2026',
+				duration: 180,
+				genre: [],
+				trackNo: 0,
+				trackOf: 0,
+				discNo: 0,
+				discOf: 0,
+				url: 'https://api.spicyamll.online/stream?song=1687014447&codec=aac&fallback=true&l=en-US&websupport=true',
+				favorite: false,
+				type: 'track' as const,
+			} as any
+
+			registerRemoteTrack(remoteTrack)
+			unregisterRemoteTrack(remoteTrack.id)
+			clearLibraryValueCache()
+
+			const result = await getLibraryValue('tracks', remoteTrack.id)
+			expect(result).toMatchObject(remoteTrack)
+
+			localStorage.removeItem('adi_music_remote_track:-1017')
 		})
 
 		it('should return cached value on subsequent calls', async () => {

@@ -98,6 +98,17 @@ export class QueueStore {
 		}
 	}
 
+	addNext = (trackId: number): void => {
+		const insertAt = this.#activeTrackIndex < 0 ? this.itemsIds.length : this.#activeTrackIndex + 1
+		if (this.#itemsIdsShuffled) {
+			this.#itemsIdsShuffled.splice(insertAt, 0, trackId)
+			const originalIndex = this.#itemsIdsOriginalOrder.indexOf(trackId)
+			if (originalIndex === -1) this.#itemsIdsOriginalOrder.push(trackId)
+			return
+		}
+		this.#itemsIdsOriginalOrder.splice(insertAt, 0, trackId)
+	}
+
 	addToQueue = (trackId: number | readonly number[]): void => {
 		const ids: readonly number[] = Array.isArray(trackId) ? trackId : [trackId]
 		this.#itemsIdsShuffled?.push(...ids)

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { browser } from '$app/environment'
+	import { onMount } from 'svelte'
 	import { createManagedArtwork } from '$lib/helpers/create-managed-artwork.svelte'
 	import { formatDuration } from '$lib/helpers/utils/format-duration.ts'
 	import { formatArtists, formatNameOrUnknown, getItemLanguage } from '$lib/helpers/utils/text.ts'
@@ -65,6 +67,20 @@
 
 	const menu = useMenu()
 	const menuItemsWithItem = $derived(track && menuItems?.bind(null, track))
+	let isOnline = $state(browser ? navigator.onLine : true)
+	const unavailableOffline = $derived(Boolean(track?.streaming && !isOnline))
+
+	onMount(() => {
+		const updateOnlineState = () => {
+			isOnline = navigator.onLine
+		}
+		window.addEventListener('online', updateOnlineState)
+		window.addEventListener('offline', updateOnlineState)
+		return () => {
+			window.removeEventListener('online', updateOnlineState)
+			window.removeEventListener('offline', updateOnlineState)
+		}
+	})
 </script>
 
 <ListItem
@@ -72,6 +88,7 @@
 	tabindex={-1}
 	class={[
 		'track-item-container group relative h-18 text-left',
+			unavailableOffline && 'opacity-45',
 		active ? 'bg-onSurfaceVariant/10 text-onSurfaceVariant' : 'text-onSurfaceVariant',
 		className,
 		selected && 'bg-primary/5',
@@ -82,7 +99,7 @@
 	ariaLabel={m.trackPlay({ name: track?.name ?? '' })}
 	{ariaRowIndex}
 	onclick={(e) => {
-		if (track) {
+		if (track && !unavailableOffline) {
 			onclick?.(track, e)
 		}
 	}}

@@ -4,6 +4,8 @@
 		children?: Snippet
 		title?: string
 		noBackButton?: boolean
+	/** Custom action for the header back button. */
+	onback?: () => void
 		/** @default 'fixed' */
 		mode?: 'fixed' | 'sticky'
 		class?: (isElevated: boolean) => ClassValue
@@ -13,7 +15,7 @@
 <script lang="ts">
 	import BackButton from './BackButton.svelte'
 
-	const { children, title, noBackButton, mode = 'fixed', class: className }: HeaderProps = $props()
+	const { children, title, noBackButton, onback, mode = 'fixed', class: className }: HeaderProps = $props()
 
 	const isFixed = $derived(mode === 'fixed')
 
@@ -58,7 +60,7 @@
 		class="mx-auto flex w-full max-w-(--app-max-content-width) items-center justify-end gap-2 pr-2 pl-6"
 	>
 		{#if !noBackButton}
-			<BackButton class={[!title && 'mr-auto']} />
+			<BackButton onback={onback} class={[!title && 'mr-auto']} />
 		{/if}
 
 		{#if title}

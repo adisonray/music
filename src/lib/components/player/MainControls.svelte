@@ -1,7 +1,7 @@
 <script lang="ts">
 	import PlayNextButton from './buttons/PlayNextButton.svelte'
 	import PlayPrevButton from './buttons/PlayPrevButton.svelte'
-	import PlayTogglePillButton from './buttons/PlayTogglePillButton.svelte'
+	import PlayToggleButton from './buttons/PlayToggleButton.svelte'
 	import RepeatButton from './buttons/RepeatButton.svelte'
 	import ShuffleButton from './buttons/ShuffleButton.svelte'
 
@@ -13,7 +13,7 @@
 
 	<PlayPrevButton />
 
-	<PlayTogglePillButton />
+	<PlayToggleButton />
 
 	<PlayNextButton />
 

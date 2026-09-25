@@ -2,7 +2,6 @@
 	import FavoriteButton from '$lib/components/FavoriteButton.svelte'
 
 	const player = usePlayer()
-
 	const track = $derived(player.activeTrack)
 </script>
 

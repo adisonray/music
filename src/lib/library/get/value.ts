@@ -6,10 +6,131 @@ import { FAVORITE_PLAYLIST_ID, FAVORITE_PLAYLIST_UUID, type LibraryStoreName } f
 import { getSongDetails } from '$lib/services/jiosaavn.ts'
 
 const idToUuidMap = new Map<number, string>()
+const remoteTrackMap = new Map<number, TrackData>()
+const REMOTE_TRACK_STORAGE_PREFIX = 'adi_music_remote_track:'
+
+const LOCAL_TRACK_ALIAS_PREFIX = 'adi_music_local_track_alias:'
+
+const getPersistedLocalTrackAlias = (sourceId: number): number | undefined => {
+	if (typeof window === 'undefined' || sourceId >= 0) return undefined
+
+	try {
+		const id = Number(localStorage.getItem(LOCAL_TRACK_ALIAS_PREFIX + sourceId) || '')
+		return Number.isFinite(id) && id > 0 ? id : undefined
+	} catch {
+		return undefined
+	}
+}
+
+
+const recoverRemoteTrack = async (id: number): Promise<TrackData | undefined> => {
+	if (typeof window === 'undefined' || id >= 0) return undefined
+
+	try {
+		const [{ getRecentlyPlayed }, { parseDiscoveryResults, spicyamll }] = await Promise.all([
+			import('$lib/services/library.ts'),
+			import('$lib/services/spicyamll.ts'),
+		])
+
+		const history = getRecentlyPlayed(100)
+		const recent = history.find((item) => String(item.trackId) === String(id))
+		if (!recent) return undefined
+
+		const response = await spicyamll.search({
+			term: recent.name + ' ' + recent.artist,
+			types: 'songs',
+			limit: 10,
+		})
+		const songs = parseDiscoveryResults(response).filter((item) => item.type === 'song')
+		const normalize = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+		const name = normalize(recent.name)
+		const artist = normalize(recent.artist)
+		const match =
+			songs.find((song) => normalize(song.name) === name && normalize(song.artist) === artist) ??
+			songs.find((song) => normalize(song.name) === name)
+
+		if (!match) return undefined
+
+		const recovered: TrackData = {
+			id,
+			remoteId: Number(match.id) || 0,
+			streaming: true,
+			uuid: 'spicyamll:' + match.id,
+			name: match.name,
+			album: match.album || '~\\0unknown',
+			artists: match.artist ? [match.artist] : ['Unknown Artist'],
+			year: '~\\0unknown',
+			duration: 0,
+			genre: [],
+			trackNo: 0,
+			trackOf: 0,
+			discNo: 0,
+			discOf: 0,
+			language: undefined,
+			image: match.artUrl
+				? { optimized: false, small: match.artUrl, full: match.artUrl }
+				: undefined,
+			file: undefined,
+			directory: undefined,
+			fileName: undefined,
+			scannedAt: Date.now(),
+			url: spicyamll.streamUrl(match.id, {
+				codec: 'aac',
+				fallback: true,
+				language: 'en-US',
+			}),
+			favorite: false,
+			type: 'track',
+		}
+
+		registerRemoteTrack(recovered)
+		const db = await getDatabase()
+		const favorite = await db.getFromIndex('playlistEntries', 'playlistTrack', [
+			FAVORITE_PLAYLIST_ID,
+			id,
+		])
+		return { ...recovered, favorite: !!favorite }
+	} catch {
+		return undefined
+	}
+}
+
+const getPersistedRemoteTrack = (id: number): TrackData | undefined => {
+	if (typeof window === 'undefined' || id >= 0) return undefined
+
+	try {
+		const raw = localStorage.getItem(REMOTE_TRACK_STORAGE_PREFIX + id)
+		if (!raw) return undefined
+		return JSON.parse(raw) as TrackData
+	} catch {
+		return undefined
+	}
+}
 
 /** @public */
 export const registerRemoteId = (id: number, uuid: string) => {
 	idToUuidMap.set(id, uuid)
+}
+
+/** @public */
+export const registerRemoteTrack = (track: Omit<TrackData, 'id'> & { id: number }) => {
+	const value = track as TrackData
+	remoteTrackMap.set(track.id, value)
+
+	// Remote tracks are not stored in IndexedDB, so keep their metadata locally.
+	// This lets playlist entries containing negative remote IDs survive a reload.
+	if (typeof window !== 'undefined' && track.id < 0) {
+		try {
+			localStorage.setItem(REMOTE_TRACK_STORAGE_PREFIX + track.id, JSON.stringify(value))
+		} catch {
+			// Storage quota/private-mode failures should never block playback.
+		}
+	}
+}
+
+/** @public */
+export const unregisterRemoteTrack = (id: number) => {
+	remoteTrackMap.delete(id)
 }
 
 type CacheKey<Store extends LibraryStoreName> = `${Store}:${string}`
@@ -55,6 +176,26 @@ export interface TrackData extends Track {
 const trackConfig: QueryConfig<TrackData> = {
 	fetch: async (id) => {
 		if (id < 0) {
+			const localAlias = getPersistedLocalTrackAlias(id)
+			if (localAlias) {
+				const localTrack = await trackConfig.fetch(localAlias)
+				if (localTrack) return localTrack
+			}
+
+			const remote = remoteTrackMap.get(id) ?? getPersistedRemoteTrack(id)
+			if (remote) {
+				remoteTrackMap.set(id, remote)
+				const db = await getDatabase()
+				const favorite = await db.getFromIndex('playlistEntries', 'playlistTrack', [
+					FAVORITE_PLAYLIST_ID,
+					id,
+				])
+				return { ...remote, favorite: !!favorite }
+			}
+
+			const recovered = await recoverRemoteTrack(id)
+			if (recovered) return recovered
+
 			const uuid = idToUuidMap.get(id)
 			if (uuid) {
 				const details = await getSongDetails(uuid)

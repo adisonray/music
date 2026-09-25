@@ -173,12 +173,13 @@ ${pXml}    </div>
     }
 
     private static filterTranslations(ttml: string, language: string): string {
-        const keepChineseTranslations = language.toLowerCase().startsWith('zh-')
+        const langLower = language.toLowerCase()
+        const keepChineseTranslations = langLower.startsWith('zh')
         return ttml.replace(
             /<span\b(?=[^>]*\bttm:role=["']x-translation["'])([^>]*)>[\s\S]*?<\/span>/gi,
             (match, attributes: string) => {
                 const translationLanguage = attributes.match(/\bxml:lang=["']([^"']+)["']/i)?.[1]?.toLowerCase()
-                return keepChineseTranslations && translationLanguage?.startsWith('zh-') ? match : ''
+                return keepChineseTranslations && translationLanguage?.startsWith('zh') ? match : ''
             },
         )
     }

@@ -146,8 +146,10 @@ export const updateThemeCssVariables = (
 				? argbFromHex(argbOrHex)
 				: null
 
-	if (argb) {
+ 	if (argb) {
+		document.documentElement.classList.add('theme-transition')
 		setThemeCssVariables(argb, isDark)
+		window.setTimeout(() => document.documentElement.classList.remove('theme-transition'), 450)
 	} else {
 		clearThemeCssVariables()
 	}

@@ -1,314 +1,300 @@
 <script lang="ts">
-    import { Kawarp } from '@kawarp/core'
-    import { onMount } from 'svelte'
+	import { Kawarp } from '@kawarp/core'
+	import { onMount } from 'svelte'
 
-    interface Props {
-        imageUrl: string | null
-        enabled?: boolean
-        warpIntensity?: number
-        blurPasses?: number
-        animationSpeed?: number
-        transitionDuration?: number
-        saturation?: number
-        tintColor?: [number, number, number]
-        tintIntensity?: number
-        dithering?: number
-        scale?: number
-    }
+	interface Props {
+		imageUrl: string | null
+		enabled?: boolean
+		warpIntensity?: number
+		blurPasses?: number
+		animationSpeed?: number
+		transitionDuration?: number
+		saturation?: number
+		tintColor?: [number, number, number]
+		tintIntensity?: number
+		dithering?: number
+		scale?: number
+	}
 
-    const {
-        imageUrl,
-        enabled = true,
-        warpIntensity = 0.8,
-        blurPasses = 8,
-        animationSpeed = 1,
-        transitionDuration = 1000,
-        saturation = 1.4,
-        tintColor,
-        tintIntensity = 0.18,
-        dithering = 0.012,
-        scale = 1
-    }: Props = $props()
+	const {
+		imageUrl,
+		enabled = true,
+		warpIntensity = 0.8,
+		blurPasses = 8,
+		animationSpeed = 1,
+		transitionDuration = 1000,
+		saturation = 1.5,
+		tintColor,
+		tintIntensity = 0.15,
+		dithering = 0.008,
+		scale = 1
+	}: Props = $props()
 
-    const mainStore = useMainStore()
-    const player = usePlayer()
+	const mainStore = useMainStore()
+	const player = usePlayer()
 
-    let isDesktop = $state(true)
+	const activeTintColor = $derived<[number, number, number]>(
+		tintColor === undefined
+			? (mainStore.isThemeDark ? [0.16, 0.16, 0.24] : [0.95, 0.95, 0.98])
+			: tintColor
+	)
 
-    const activeTintColor = $derived<[number, number, number]>(
-        tintColor === undefined
-            ? (mainStore.isThemeDark ? [0.12, 0.12, 0.18] : [0.96, 0.96, 0.98])
-            : tintColor
-    )
+	const isReducedMotion = $derived(mainStore.isReducedMotion)
+	const activeAnimationSpeed = $derived(isReducedMotion ? 0 : animationSpeed)
 
-    const isReducedMotion = $derived(mainStore.isReducedMotion)
-    const activeAnimationSpeed = $derived(isReducedMotion ? 0 : animationSpeed)
+	let canvasElement = $state<HTMLCanvasElement>()
+	let kawarpInstance: Kawarp | null = null
+	let currentLoadedUrl: string | null = null
+	let isLoaded = $state(false)
+	let animationFrameId: number | null = null
 
-    let canvasElement = $state<HTMLCanvasElement>()
-    let kawarpInstance: Kawarp | null = null
-    let currentLoadedUrl: string | null = null
-    let isLoaded = $state(false)
-    let animationFrameId: number | null = null
+	const runAudioReaction = () => {
+		if (!(enabled && kawarpInstance)) {
+			if (animationFrameId) {
+				cancelAnimationFrame(animationFrameId)
+				animationFrameId = null
+			}
+			return
+		}
 
-    // Smooth Beat Detection state
-    let lastFrameTime = performance.now()
-    let smoothedBass = 0
-    let bassEnergy = 0
-    let beatCutoff = 0
+		const analyser = player.equalizer.analyser
+		if (analyser && player.playing) {
+			const bufferLength = analyser.frequencyBinCount
+			const dataArray = new Uint8Array(bufferLength)
+			analyser.getByteFrequencyData(dataArray)
 
-    const runAudioReaction = (currentTime: number = performance.now()) => {
-        if (!enabled || !kawarpInstance || !isDesktop) {
-            if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId)
-                animationFrameId = null
-            }
-            return
-        }
+			let sum = 0
+			for (let i = 0; i < bufferLength; i += 1) {
+				sum += dataArray[i] ?? 0
+			}
+			const average = sum / bufferLength // 0 to 255
 
-        // Frame-rate independent delta time calculation (clamped to prevent jumps on tab focus)
-        const dt = Math.min((currentTime - lastFrameTime) / 1000, 0.1) || 0.016
-        lastFrameTime = currentTime
+			// Isolate bass (first 15% of the bins)
+			let bassSum = 0
+			const bassCount = Math.max(1, Math.floor(bufferLength * 0.15))
+			for (let i = 0; i < bassCount; i += 1) {
+				bassSum += dataArray[i] ?? 0
+			}
+			const bassAverage = bassSum / bassCount // 0 to 255
 
-        const analyser = player.equalizer?.analyser
-        if (analyser && player.playing) {
-            const bufferLength = analyser.frequencyBinCount
-            const dataArray = new Uint8Array(bufferLength)
-            analyser.getByteFrequencyData(dataArray)
+			const normVol = average / 255
+			const normBass = bassAverage / 255
 
-            // Dynamic frequency band isolator (20Hz - 140Hz)
-            const sampleRate = analyser.context?.sampleRate || 44100
-            const nyquist = sampleRate / 2
-            const binHz = nyquist / bufferLength
+			const targetWarpIntensity = warpIntensity + normBass * 0.6
+			const targetAnimationSpeed = activeAnimationSpeed + normVol * 1.5
+			const targetScale = scale + normBass * 0.05
 
-            const lowBin = Math.floor(20 / binHz)
-            const highBin = Math.min(bufferLength, Math.ceil(140 / binHz))
+			const ease = 0.1
+			kawarpInstance.warpIntensity = kawarpInstance.warpIntensity + (targetWarpIntensity - kawarpInstance.warpIntensity) * ease
+			kawarpInstance.animationSpeed = kawarpInstance.animationSpeed + (targetAnimationSpeed - kawarpInstance.animationSpeed) * ease
+			kawarpInstance.scale = kawarpInstance.scale + (targetScale - kawarpInstance.scale) * ease
+		} else {
+			// Fade back to defaults
+			const ease = 0.05
+			kawarpInstance.warpIntensity = kawarpInstance.warpIntensity + (warpIntensity - kawarpInstance.warpIntensity) * ease
+			kawarpInstance.animationSpeed = kawarpInstance.animationSpeed + (activeAnimationSpeed - kawarpInstance.animationSpeed) * ease
+			kawarpInstance.scale = kawarpInstance.scale + (scale - kawarpInstance.scale) * ease
+		}
 
-            let bassSum = 0
-            const count = Math.max(1, highBin - lowBin)
-            for (let i = lowBin; i < highBin; i++) {
-                bassSum += dataArray[i] ?? 0
-            }
+		animationFrameId = requestAnimationFrame(runAudioReaction)
+	}
 
-            const rawBass = bassSum / count / 255
+	onMount(() => {
+		let resizeObserver: ResizeObserver | null = null
 
-            // Exponential moving average to eliminate raw audio noise jitter
-            smoothedBass += (rawBass - smoothedBass) * (1 - Math.exp(-18 * dt))
+		if (canvasElement) {
+			try {
+				// Initialize Kawarp on client mount
+				kawarpInstance = new Kawarp(canvasElement, {
+					warpIntensity,
+					blurPasses,
+					animationSpeed: activeAnimationSpeed,
+					transitionDuration,
+					saturation,
+					tintColor: activeTintColor,
+					tintIntensity,
+					dithering,
+					scale
+				})
 
-            // Peak-threshold beat detection with smooth release decay
-            if (smoothedBass > beatCutoff && smoothedBass > 0.22) {
-                bassEnergy = smoothedBass
-                beatCutoff = smoothedBass * 1.15
-            } else {
-                bassEnergy += (0 - bassEnergy) * (1 - Math.exp(-7 * dt))
-                beatCutoff += (0 - beatCutoff) * (1 - Math.exp(-3.5 * dt))
-            }
+				// Set up ResizeObserver
+				resizeObserver = new ResizeObserver(() => {
+					if (kawarpInstance) {
+						kawarpInstance.resize()
+					}
+				})
+				resizeObserver.observe(canvasElement)
 
-            const targetWarpIntensity = warpIntensity + bassEnergy * 0.5
-            const targetAnimationSpeed = activeAnimationSpeed + bassEnergy * 1.1
-            const targetScale = scale + bassEnergy * 0.035
+				// Load the initial image if it exists
+				if (enabled && imageUrl) {
+					currentLoadedUrl = imageUrl
+					kawarpInstance.loadImage(imageUrl)
+						.then(() => {
+							isLoaded = true
+							if (kawarpInstance && enabled) {
+								kawarpInstance.start()
+							}
+						})
+						.catch((err) => {
+							console.error('Failed to load initial Kawarp image:', err)
+							isLoaded = false
+						})
+				} else if (enabled) {
+					kawarpInstance.start()
+				}
+			} catch (e) {
+				console.error('Failed to initialize Kawarp:', e)
+			}
+		}
 
-            // Frame-rate independent exponential interpolation for organic springiness
-            const lerpSpeed = bassEnergy > 0.35 ? 12 : 6
-            const ease = 1 - Math.exp(-lerpSpeed * dt)
+		return () => {
+			if (resizeObserver) {
+				resizeObserver.disconnect()
+			}
+			if (animationFrameId) {
+				cancelAnimationFrame(animationFrameId)
+				animationFrameId = null
+			}
+			if (kawarpInstance) {
+				kawarpInstance.stop()
+				kawarpInstance.dispose()
+				kawarpInstance = null
+			}
+		}
+	})
 
-            kawarpInstance.warpIntensity += (targetWarpIntensity - kawarpInstance.warpIntensity) * ease
-            kawarpInstance.animationSpeed += (targetAnimationSpeed - kawarpInstance.animationSpeed) * ease
-            kawarpInstance.scale += (targetScale - kawarpInstance.scale) * ease
-        } else {
-            const ease = 1 - Math.exp(-4 * dt)
-            kawarpInstance.warpIntensity += (warpIntensity - kawarpInstance.warpIntensity) * ease
-            kawarpInstance.animationSpeed += (activeAnimationSpeed - kawarpInstance.animationSpeed) * ease
-            kawarpInstance.scale += (scale - kawarpInstance.scale) * ease
-        }
+	// React to options changes
+	$effect(() => {
+		if (!kawarpInstance) {
+			return
+		}
 
-        animationFrameId = requestAnimationFrame(runAudioReaction)
-    }
+		kawarpInstance.setOptions({
+			warpIntensity,
+			blurPasses,
+			animationSpeed: activeAnimationSpeed,
+			transitionDuration,
+			saturation,
+			tintColor: activeTintColor,
+			tintIntensity,
+			dithering,
+			scale
+		})
+	})
 
-    onMount(() => {
-        const ua = navigator.userAgent || ''
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
-        isDesktop = !isMobile
+	// React to audio playing and start/stop visualizer loop
+	$effect(() => {
+		// Evaluate player.playing to establish reactive dependency
+		const isEnabled = enabled
+		if (player.playing && isEnabled && kawarpInstance) {
+			if (!animationFrameId) {
+				runAudioReaction()
+			}
+		} else if (animationFrameId) {
+				cancelAnimationFrame(animationFrameId)
+				animationFrameId = null
+			}
 
-        if (!isDesktop) return
+		return () => {
+			if (animationFrameId) {
+				cancelAnimationFrame(animationFrameId)
+				animationFrameId = null
+			}
+		}
+	})
 
-        let resizeObserver: ResizeObserver | null = null
+	// React to imageUrl changes
+	$effect(() => {
+		if (!kawarpInstance) {
+			return
+		}
 
-        if (canvasElement) {
-            try {
-                kawarpInstance = new Kawarp(canvasElement, {
-                    warpIntensity,
-                    blurPasses,
-                    animationSpeed: activeAnimationSpeed,
-                    transitionDuration,
-                    saturation,
-                    tintColor: activeTintColor,
-                    tintIntensity,
-                    dithering,
-                    scale
-                })
+		if (!imageUrl) {
+			isLoaded = false
+			currentLoadedUrl = null
+			return
+		}
 
-                resizeObserver = new ResizeObserver(() => {
-                    kawarpInstance?.resize()
-                })
-                resizeObserver.observe(canvasElement)
+		if (imageUrl !== currentLoadedUrl) {
+			currentLoadedUrl = imageUrl
+			kawarpInstance.loadImage(imageUrl)
+				.then(() => {
+					isLoaded = true
+					if (kawarpInstance && enabled) {
+						kawarpInstance.start()
+					}
+				})
+				.catch((err) => {
+					console.error('Failed to load Kawarp image:', err)
+					isLoaded = false
+				})
+		}
+	})
 
-                if (enabled && imageUrl) {
-                    currentLoadedUrl = imageUrl
-                    kawarpInstance.loadImage(imageUrl)
-                        .then(() => {
-                            isLoaded = true
-                            if (kawarpInstance && enabled) kawarpInstance.start()
-                        })
-                        .catch((err) => {
-                            console.error('Failed to load initial Kawarp image:', err)
-                            isLoaded = false
-                        })
-                } else if (enabled) {
-                    kawarpInstance.start()
-                }
-            } catch (e) {
-                console.error('Failed to initialize Kawarp:', e)
-            }
-        }
+	// React to enabled changes
+	$effect(() => {
+		if (!kawarpInstance) {
+			return
+		}
 
-        return () => {
-            resizeObserver?.disconnect()
-            if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId)
-                animationFrameId = null
-            }
-            if (kawarpInstance) {
-                kawarpInstance.stop()
-                kawarpInstance.dispose()
-                kawarpInstance = null
-            }
-        }
-    })
-
-    // Options updates
-    $effect(() => {
-        if (!kawarpInstance || !isDesktop) return
-
-        kawarpInstance.setOptions({
-            warpIntensity,
-            blurPasses,
-            animationSpeed: activeAnimationSpeed,
-            transitionDuration,
-            saturation,
-            tintColor: activeTintColor,
-            tintIntensity,
-            dithering,
-            scale
-        })
-    })
-
-    // Audio loop control
-    $effect(() => {
-        if (player.playing && enabled && kawarpInstance && isDesktop) {
-            if (!animationFrameId) {
-                lastFrameTime = performance.now()
-                runAudioReaction()
-            }
-        } else {
-            if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId)
-                animationFrameId = null
-            }
-        }
-
-        return () => {
-            if (animationFrameId) {
-                cancelAnimationFrame(animationFrameId)
-                animationFrameId = null
-            }
-        }
-    })
-
-    // Image transitions
-    $effect(() => {
-        if (!kawarpInstance || !isDesktop) return
-
-        if (!imageUrl) {
-            isLoaded = false
-            currentLoadedUrl = null
-            return
-        }
-
-        if (imageUrl !== currentLoadedUrl) {
-            currentLoadedUrl = imageUrl
-            kawarpInstance.loadImage(imageUrl)
-                .then(() => {
-                    isLoaded = true
-                    if (kawarpInstance && enabled) kawarpInstance.start()
-                })
-                .catch((err) => {
-                    console.error('Failed to load Kawarp image:', err)
-                    isLoaded = false
-                })
-        }
-    })
-
-    // Enable / Disable toggle
-    $effect(() => {
-        if (!kawarpInstance || !isDesktop) return
-
-        if (enabled && isLoaded) {
-            kawarpInstance.start()
-        } else {
-            kawarpInstance.stop()
-        }
-    })
+		if (enabled && isLoaded) {
+			kawarpInstance.start()
+		} else {
+			kawarpInstance.stop()
+		}
+	})
 </script>
 
 <div
-    class="kawarp-background"
-    style="opacity: {isLoaded && enabled && isDesktop ? 1 : 0};"
+	class="kawarp-background"
+	style="opacity: {isLoaded && enabled ? 1 : 0};"
 >
-    <canvas bind:this={canvasElement}></canvas>
-    <div class="kawarp-overlay"></div>
+	<canvas bind:this={canvasElement}></canvas>
+	<div class="kawarp-overlay"></div>
 </div>
 
 <style lang="postcss">
-    @reference '../../app.css';
+	@reference '../../app.css';
 
-    .kawarp-background {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        pointer-events: none;
-        z-index: 0;
-        transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-        transform: translateZ(0);
-        will-change: opacity;
-    }
+	.kawarp-background {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		overflow: hidden;
+		pointer-events: none;
+		z-index: 0;
+		transition: opacity 0.5s ease;
+	}
 
-    .kawarp-background canvas {
-        display: block;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        transform: scale(1.02); /* Prevents edge bleeding during heavy warp beats */
-    }
+	.kawarp-background canvas {
+		display: block;
+		width: 100%;
+		height: 100%;
+		pointer-events: none;
+	}
 
-    .kawarp-overlay {
-        position: absolute;
-        inset: 0;
-        pointer-events: none;
-        z-index: 1;
-        transition: background 0.6s ease;
-    }
+	.kawarp-overlay {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		z-index: 1;
+		transition: background 0.5s ease;
+	}
 
-    :global(.dark) .kawarp-overlay {
-        background: 
-            radial-gradient(circle at 50% 30%, transparent 20%, rgb(0 0 0 / 0.3) 100%),
-            linear-gradient(to bottom, rgb(0 0 0 / 0.15) 0%, rgb(0 0 0 / 0.45) 100%);
-    }
+	:global(.dark) .kawarp-overlay {
+		background: linear-gradient(
+			to bottom,
+			rgb(0 0 0 / 0.12),
+			rgb(0 0 0 / 0.35)
+		);
+	}
 
-    :global(html:not(.dark)) .kawarp-overlay {
-        background: 
-            radial-gradient(circle at 50% 30%, transparent 20%, rgb(255 255 255 / 0.2) 100%),
-            linear-gradient(to bottom, rgb(255 255 255 / 0.35) 0%, rgb(255 255 255 / 0.75) 100%);
-    }
+	:global(html:not(.dark)) .kawarp-overlay {
+		background: linear-gradient(
+			to bottom,
+			rgb(255 255 255 / 0.45),
+			rgb(255 255 255 / 0.7)
+		);
+	}
 </style>

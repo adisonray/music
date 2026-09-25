@@ -5,6 +5,7 @@ import { createUIAction } from '$lib/helpers/ui-action.ts'
 import { truncate } from '$lib/helpers/utils/text.ts'
 import type { Playlist, PlaylistEntry } from '$lib/library/types.ts'
 import { FAVORITE_PLAYLIST_ID } from './types.ts'
+import { ensureTrackIsStoredLocally } from './local-download.ts'
 
 export { FAVORITE_PLAYLIST_ID } from './types.ts'
 
@@ -210,8 +211,16 @@ interface BatchModifyPlaylistSelectionOptions {
 export const dbBatchModifyPlaylistsSelection = async (
 	options: BatchModifyPlaylistSelectionOptions,
 ): Promise<boolean> => {
-	const store = await getPlaylistEntriesDatabaseStore()
 	const { trackIds, playlistsIdsAddTo, playlistsIdsRemoveFrom } = options
+
+	// Any remote track being added to a playlist is first downloaded/imported
+	// into the local library. Existing local tracks are returned immediately.
+	const localTrackIds =
+		playlistsIdsAddTo.length > 0
+			? await Promise.all(trackIds.map((trackId) => ensureTrackIsStoredLocally(trackId)))
+			: []
+
+	const store = await getPlaylistEntriesDatabaseStore()
 
 	const allChanges: DatabaseChangeDetails[] = []
 	if (playlistsIdsRemoveFrom.length > 0) {
@@ -225,7 +234,7 @@ export const dbBatchModifyPlaylistsSelection = async (
 	if (playlistsIdsAddTo.length > 0) {
 		const changes = await dbAddTracksToPlaylistsWithTx(store, {
 			playlistIds: playlistsIdsAddTo,
-			trackIds,
+			trackIds: localTrackIds,
 		})
 		allChanges.push(...changes)
 	}

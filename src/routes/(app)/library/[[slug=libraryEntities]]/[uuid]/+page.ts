@@ -97,12 +97,9 @@ const createPlaylistTracksPageQuery = (
 
 			const values = await db.getAllFromIndex('playlistEntries', 'playlistId', playlistId)
 
-			const tracksIds: number[] = Array.from({ length: values.length })
+			const tracksIds = values.map((value) => value.trackId)
 			const playlistIdMap: Record<number, number> = {}
-			for (let i = 0; i < values.length; i += 1) {
-				// biome-ignore lint/style/noNonNullAssertion: value is always defined
-				const value = values[i]!
-				tracksIds[i] = value.trackId
+			for (const value of values) {
 				playlistIdMap[value.trackId] = value.id
 			}
 			return { tracksIds, playlistIdMap }

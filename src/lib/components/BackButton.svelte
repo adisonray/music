@@ -4,9 +4,10 @@
 
 	interface Props {
 		class?: ClassValue
+		onback?: () => void
 	}
 
-	const { class: className }: Props = $props()
+	const { class: className, onback }: Props = $props()
 
 	const canGoBack = () => {
 		if (window.navigation !== undefined) {
@@ -18,6 +19,11 @@
 	}
 
 	const handleBackClick = () => {
+		if (onback) {
+			onback()
+			return
+		}
+
 		if (canGoBack()) {
 			window.history.back()
 		} else {

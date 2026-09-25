@@ -14,6 +14,7 @@ export class LyricsProvider {
 		track: TrackData,
 		signal?: AbortSignal,
 	): Promise<ProviderResponse | null> {
+		if (providerId === 'amll') return LyricsProvider.fetchFromAmll(track, signal)
 		if (providerId === 'adi') return LyricsProvider.fetchFromAdi(track, signal)
 		if (providerId === 'lrcmux') return LyricsProvider.fetchFromLrcmux(track, signal)
 		if (providerId === 'lrclib') return LyricsProvider.fetchFromLrclib(track, signal)
@@ -51,7 +52,7 @@ export class LyricsProvider {
 			if (preferredRes) return preferredRes
 		}
 
-		const standardOrder = ['adi', 'lrcmux', 'lrclib', 'am-lyrics', 'unison']
+		const standardOrder = ['amll', 'adi', 'lrcmux', 'lrclib', 'am-lyrics', 'unison']
 		for (const pid of standardOrder) {
 			if (preferredProvider && pid === preferredProvider) continue
 			const res = await LyricsProvider.fetchByProviderId(pid, track, signal)
@@ -59,6 +60,33 @@ export class LyricsProvider {
 		}
 
 		return null
+	}
+
+	static async fetchFromAmll(
+		track: TrackData,
+		signal?: AbortSignal,
+	): Promise<ProviderResponse | null> {
+		if (!track.remoteId) return null
+
+		try {
+			const url = new URL('https://api.amll.dev/v1/lyrics/get')
+			url.searchParams.set('id', String(track.remoteId))
+			const response = await fetch(url, { signal })
+			if (!response.ok) return null
+
+			const payload = await response.json()
+			const rawLyrics = payload?.data?.lyrics
+			if (typeof rawLyrics !== 'string' || !rawLyrics.trim()) return null
+
+			return {
+				rawLyrics,
+				source: 'amll',
+				isPlainOnly: false,
+			}
+		} catch (error) {
+			if (error instanceof Error && error.name === 'AbortError') throw error
+			return null
+		}
 	}
 
 	static async fetchFromAdi(
