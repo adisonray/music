@@ -7,6 +7,7 @@ import { debounce } from '$lib/helpers/utils/debounce.ts'
 import { formatArtists, truncate } from '$lib/helpers/utils/text.ts'
 import { throttle } from '$lib/helpers/utils/throttle.ts'
 import { getLibraryValue, type TrackData } from '$lib/library/get/value.ts'
+import { getStoredLocalTrackId } from '$lib/library/local-download.ts'
 import { createTrackQuery } from '$lib/library/get/value-queries.ts'
 import { LyricsService } from '$lib/lyrics/LyricsService.ts'
 import { dbAddToPlayHistory } from '$lib/library/play-history-actions.ts'
@@ -14,6 +15,7 @@ import { recordRecentTrack } from '$lib/services/library.ts'
 import { UNKNOWN_ITEM } from '$lib/library/types.ts'
 import { AudioLoader } from './audio-loader.svelte.js'
 import { EqualizerStore } from './equalizer.svelte.js'
+import { updateDiscordPresence, clearDiscordPresence } from '$lib/helpers/discord-rpc.ts'
 import { type PlayTrackOptions, QueueStore } from './queue.svelte.js'
 
 export type { PlayTrackOptions }
@@ -27,12 +29,11 @@ export class PlayerStore {
 	readonly #main = useMainStore()
 
 	readonly #audio = new Audio()
+	#audioSource: string | null = null
 	readonly #audioLoader = new AudioLoader((src) => {
+		this.#audioSource = src
 		this.#audio.preload = src ? 'auto' : 'metadata'
 		this.#audio.src = src ?? ''
-		if (src) {
-			this.#audio.load()
-		}
 	})
 	readonly #queue = new QueueStore()
 	readonly equalizer = new EqualizerStore(this.#audio)
@@ -82,6 +83,8 @@ export class PlayerStore {
 	// Tracks that must resume automatically once their source finishes loading.
 	#autoplayTrackId: number | null = null
 	#preloadedLyrics = new Map<number, Promise<unknown>>()
+	#failedRemoteTracks = new Set<number>()
+	#playRequestGeneration = 0
 
 	#activeTrackQuery: QueryResult<TrackData | undefined> = createTrackQuery(
 		() => this.#queue.itemsIds[this.#queue.activeTrackIndex] ?? -1,
@@ -135,6 +138,8 @@ export class PlayerStore {
 				return
 			}
 
+			this.#failedRemoteTracks.delete(track.id)
+
 			scheduleAudioReset.cancel()
 
 			if (prevTrackId !== null) {
@@ -152,8 +157,6 @@ export class PlayerStore {
 				? Promise.resolve({ status: 'loaded' } as const)
 				: this.#audioLoader.load(track.directory, track.file, track.url)
 			).then((result) => {
-				// playTrack() sets the desired state to playing before the async
-				// source load finishes. Start playback as soon as the source is ready.
 				if (
 					result.status === 'loaded' &&
 					this.activeTrack?.id === track.id &&
@@ -163,9 +166,9 @@ export class PlayerStore {
 					if (this.equalizer.enabled) {
 						void this.equalizer.resumeContext()
 					}
-					const playPromise = this.#audio.play()
-					playPromise?.catch((error) => {
+					void this.#audio.play().catch((error) => {
 						console.warn('Audio playback failed after loading:', error)
+						this.#failedRemoteTracks.add(track.id)
 						this.playing = false
 					})
 				}
@@ -183,9 +186,9 @@ export class PlayerStore {
 						id: 'failed-to-load-audio',
 						duration: 10_000,
 					})
-
-					prevTrackId = null
-					this.#queue.setTrack(-1)
+					this.playing = false
+					this.#autoplayTrackId = null
+					this.#failedRemoteTracks.add(track.id)
 				}
 			})
 		}
@@ -226,45 +229,30 @@ export class PlayerStore {
 			}
 		})
 
-		// Guarded by loading: prevents play() on an empty/stale src during file fetch.
-		$effect(() => {
-			if (this.#audioLoader.loading) {
-				return
-			}
-
-			const shouldPlay = this.playing
-
-			if (audio.paused === !shouldPlay) {
-				return
-			}
-
-			if (shouldPlay) {
-				if (this.equalizer.enabled) {
-					void this.equalizer.resumeContext()
-				}
-				const playPromise = audio.play()
-				if (playPromise !== undefined) {
-					playPromise.catch((error) => {
-						console.warn('Audio playback error:', error)
-						if (!this.#audioLoader.loading) {
-							this.playing = false
-						}
-					})
-				}
-			} else {
-				audio.pause()
-			}
-		})
-
+		// Playback is controlled explicitly by togglePlay/playTrack and synchronized
+		// from native audio events below. A reactive audio.play()/pause() effect
+		// can race source changes and user clicks, immediately undoing the command.
 		const syncPlayingFromAudio = () => {
 			const audioPlaying = !audio.paused
-			if (audioPlaying !== this.playing) {
-				this.playing = audioPlaying
+			if (audioPlaying) {
+				this.playing = true
+				return
 			}
+
+			// Changing the audio source can emit a pause event before the new
+			// source has finished loading. If this track is still marked for
+			// autoplay, keep the requested state instead of flipping the UI
+			// back to Play.
+			if (this.#autoplayTrackId === this.activeTrack?.id) {
+				return
+			}
+
+			this.playing = false
 		}
 
 		audio.onplay = () => {
 			setPlaybackRate()
+			this.#autoplayTrackId = null
 			syncPlayingFromAudio()
 			this.#updatePositionState()
 		}
@@ -282,6 +270,36 @@ export class PlayerStore {
 		audio.onpause = () => {
 			syncPlayingFromAudio()
 			this.#updatePositionState()
+		}
+
+		audio.onerror = () => {
+			const track = this.activeTrack
+			if (!track || this.#audioLoader.loading) return
+
+			const source = audio.currentSrc || audio.src
+			if (!source || source !== this.#audioSource) return
+
+			const code = audio.error?.code
+			console.warn('Audio media error:', { code, src: source })
+
+			if (this.#failedRemoteTracks.has(track.id)) return
+			this.#failedRemoteTracks.add(track.id)
+			this.playing = false
+			this.#autoplayTrackId = null
+
+			snackbar({
+				message: `Unable to play "${truncate(track.name, 30)}". The stream is unavailable or could not be decoded.`,
+				id: 'failed-to-play-audio',
+				duration: 10_000,
+			})
+		}
+
+		audio.onstalled = () => {
+			// Native media loading may stall briefly; do not turn a transient stall into a hard failure.
+		}
+
+		audio.onabort = () => {
+			// Source changes intentionally abort the previous media resource.
 		}
 
 		audio.onseeked = () => {
@@ -358,6 +376,23 @@ export class PlayerStore {
 
 		$effect(() => {
 			audio.muted = this.muted
+		})
+
+		$effect(() => {
+			const track = this.activeTrack
+			if (!track || !this.playing) {
+				clearDiscordPresence()
+				return
+			}
+
+			updateDiscordPresence({
+				title: track.name,
+				artist: formatArtists(track.artists),
+				album: track.album,
+				playing: true,
+				position: this.currentTime,
+				duration: this.duration,
+			})
 		})
 
 		const ms = typeof window === 'undefined' ? undefined : window.navigator.mediaSession
@@ -461,16 +496,20 @@ export class PlayerStore {
 
 			if (this.#preloadedAudio.has(candidate.id)) continue
 
-			let src = candidate.url
+			// Preload the downloaded copy when available. Never let a remote
+			// URL win over an offline file just because it is easier to preload.
+			let src: string | undefined
 			let objectUrl: string | undefined
-			if (!src && candidate.file instanceof File) {
+			if (candidate.file instanceof File) {
 				objectUrl = URL.createObjectURL(candidate.file)
 				src = objectUrl
+			} else {
+				src = candidate.url
 			}
 			if (!src) continue
 
 			const audio = new Audio()
-			audio.preload = 'auto'
+			audio.preload = 'metadata'
 			audio.src = src
 			audio.load()
 			this.#preloadedAudio.set(candidate.id, { audio, objectUrl })
@@ -546,29 +585,45 @@ export class PlayerStore {
 
 		const nextState = force ?? !this.playing
 		const activeTrackId = this.#queue.activeTrackId
-		this.playing = nextState
-		this.#autoplayTrackId = nextState ? activeTrackId : null
-		if (nextState) {
-			this.#audio.preload = 'auto'
-			if (this.#audioLoader.loading) {
-				return
-			}
 
-			if (this.equalizer.enabled) {
-				void this.equalizer.resumeContext()
-			}
-			const playPromise = this.#audio.play()
-			if (playPromise !== undefined) {
-				playPromise.catch((error) => {
-					console.warn('Audio playback request failed:', error)
-					if (!this.#audioLoader.loading) {
-						this.playing = false
-					}
-				})
-			}
-		} else {
+		if (!nextState) {
+			// A pause click must win any pending playTrack() alias lookup.
+			this.#playRequestGeneration += 1
+			this.#autoplayTrackId = null
+			this.playing = false
 			this.#audio.pause()
+			return
 		}
+
+		if (activeTrackId === null) {
+			this.playing = false
+			this.#autoplayTrackId = null
+			return
+		}
+
+		// Explicit user play is also a retry. A previous transient media error
+		// must not permanently lock this track in a failed state.
+		this.#failedRemoteTracks.delete(activeTrackId)
+		this.playing = true
+		this.#autoplayTrackId = activeTrackId
+		this.#audio.preload = 'auto'
+
+		if (this.equalizer.enabled) {
+			void this.equalizer.resumeContext()
+		}
+
+		// Never play while AudioLoader is replacing the source.
+		if (this.#audioLoader.loading || !this.#audio.src) {
+			return
+		}
+
+		void this.#audio.play().catch((error) => {
+			console.warn('Audio playback request failed:', error)
+			if (this.#autoplayTrackId === activeTrackId) {
+				this.playing = false
+				this.#autoplayTrackId = null
+			}
+		})
 	}
 
 	playNextTrack = (trackId: number): void => {
@@ -583,26 +638,60 @@ export class PlayerStore {
 		this.playTrack(this.#queue.getPrevIndex())
 	}
 
-	playTrack = (
+	playTrack = async (
 		trackIndex: number,
 		queue?: readonly number[],
 		options: PlayTrackOptions = {},
-	): void => {
+	): Promise<void> => {
+		const requestGeneration = ++this.#playRequestGeneration
+		const sourceQueue = queue ?? this.#queue.itemsIds
+		const requestedTrackId = sourceQueue[options.shuffle ? 0 : trackIndex]
+
+		// Downloads made from Discovery can be stored under a local IndexedDB
+		// track id while the queue still contains the remote/discovery id.
+		// Resolve that alias before changing the active queue so playback uses
+		// the downloaded file instead of starting the stream.
+		let resolvedTrackId = requestedTrackId
+		if (requestedTrackId !== undefined) {
+			const localTrackId = await getStoredLocalTrackId(requestedTrackId)
+			if (requestGeneration !== this.#playRequestGeneration) return
+			if (localTrackId !== undefined) resolvedTrackId = localTrackId
+		}
+
+		// Set the desired state before changing the queue. The source change
+		// emits a native pause event, so the incoming track must already be
+		// marked for autoplay.
+		this.playing = true
+		this.#autoplayTrackId = resolvedTrackId ?? null
+
 		const currentTrackId = this.#queue.activeTrackId
-		this.#queue.setTrack(trackIndex, queue, options)
+		if (queue) {
+			const resolvedQueue = [...queue]
+			if (trackIndex >= 0 && trackIndex < resolvedQueue.length && resolvedTrackId !== undefined) {
+				resolvedQueue[trackIndex] = resolvedTrackId
+			}
+			this.#queue.setTrack(trackIndex, resolvedQueue, options)
+		} else if (resolvedTrackId !== requestedTrackId && requestedTrackId !== undefined) {
+			const currentQueue = [...this.#queue.itemsIds]
+			const index = currentQueue.indexOf(requestedTrackId)
+			if (index !== -1) currentQueue[index] = resolvedTrackId as number
+			this.#queue.setTrack(index === -1 ? trackIndex : index, currentQueue, options)
+		} else {
+			this.#queue.setTrack(trackIndex, undefined, options)
+		}
+
+		if (requestGeneration !== this.#playRequestGeneration) return
 
 		const isSameTrack = currentTrackId !== null && this.#queue.activeTrackId === currentTrackId
 
 		if (isSameTrack) {
-			// Reset time to 0
 			this.seek(0)
-		} else {
-			// Update ui time instantly, but keep audio.currentTime
-			// until play history is saved.
-			this.currentTime = 0
+			this.togglePlay(true)
+			return
 		}
 
-		this.togglePlay(true)
+		this.currentTime = 0
+		this.#autoplayTrackId = this.#queue.activeTrackId
 	}
 
 	seek = (time: number): void => {

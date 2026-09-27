@@ -83,27 +83,25 @@ export const getAnimatedArtwork = async (
 				}
 
 				try {
-					const params: Record<string, string> = { artist, album }
-					if (title) {
-						params.title = title
-					}
-					const searchParams = new URLSearchParams(params)
-					const response = await fetch(
-						`https://artwork.m8tec.top/api/v1/artwork/search?${searchParams.toString()}`,
-					)
+					// Try the exact song first. If the online provider has slightly
+					// different title metadata, fall back to the album artwork search.
+					const queries: Record<string, string>[] = [{ artist, album }]
+					if (title) queries.unshift({ artist, album, title })
 
-					if (!response.ok) {
-						if (response.status === 404) {
-							safeSetStorage(key, {
-								type: 'none',
-								timestamp: Date.now(),
-							})
+					for (const params of queries) {
+						const searchParams = new URLSearchParams(params)
+						const response = await fetch(
+							`https://artwork.m8tec.top/api/v1/artwork/search?${searchParams.toString()}`,
+						)
+
+						if (!response.ok) {
+							if (response.status !== 404) break
+							continue
 						}
-						return undefined
-					}
 
-					const data = (await response.json()) as { url?: string; url_tall?: string }
-					if (data.url) {
+						const data = (await response.json()) as { url?: string; url_tall?: string }
+						if (!data.url) continue
+
 						const result: AnimatedArtwork = {
 							url: data.url,
 							urlTall: data.url_tall,

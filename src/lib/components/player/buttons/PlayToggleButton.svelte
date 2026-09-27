@@ -12,30 +12,16 @@
 	}
 
 	onMount(async () => {
-		const aero = await import(
-			'https://nurislamaibekuly.github.io/aeroui/src/components/player-button/player-button.js'
-		)
-
+		const aero = await import('https://nurislamaibekuly.github.io/aeroui/src/components/player-button/player-button.js')
 		setPlayerIcon = aero.setPlayerIcon
 		aero.initPlayerButton(button)
 		syncIcon()
-
-		const handlePress = () => {
-			player.togglePlay()
-			// Update immediately so AeroUI's native symbol-replace animation
-			// runs on every play/pause transition.
-			syncIcon()
-		}
-
+		const handlePress = () => { void player.togglePlay() }
 		button.addEventListener('pressend', handlePress)
-
-		return () => {
-			button.removeEventListener('pressend', handlePress)
-		}
+		return () => button.removeEventListener('pressend', handlePress)
 	})
 
 	$effect(() => {
-		// Track the reactive playing state and keep AeroUI's native icon in sync.
 		player.playing
 		syncIcon()
 	})
@@ -53,9 +39,17 @@
 	@reference '../../../../app.css';
 
 	.aero-player {
+		--player-size: --spacing(11);
+		--player-icon: --spacing(6);
 		--player-label: var(--color-onSecondaryContainer);
 		--player-pressed: var(--color-onSecondaryContainer);
 		--player-tint: color-mix(in srgb, var(--color-onSecondaryContainer) 10%, transparent);
-		--player-disabled: color-mix(in srgb, var(--color-onSecondaryContainer) 55%, transparent);
+		--player-disabled: color-mix(in srgb, var(--color-onSecondaryContainer) 38%, transparent);
+		color: var(--color-onSecondaryContainer);
+	}
+
+	:global(#mini-player .aero-player) {
+		--player-size: --spacing(11);
+		--player-icon: --spacing(6);
 	}
 </style>

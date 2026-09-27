@@ -4,6 +4,7 @@
 	import { page } from '$app/state'
 	import type { RouteId } from '$app/types'
 	import AlbumsListContainer from '$lib/components/AlbumsListContainer.svelte'
+	import LibraryHome from '$lib/components/LibraryHome.svelte'
 	import ArtistListContainer from '$lib/components/ArtistListContainer.svelte'
 	import Button from '$lib/components/Button.svelte'
 	import IconButton from '$lib/components/IconButton.svelte'
@@ -27,16 +28,26 @@
 	const dialogs = useDialogsStore()
 
 	const itemsIds = $derived(data.itemsIdsQuery.value)
-	const slug = $derived(data.slug)
+	const slug = $derived(page.params.slug as typeof data.slug | undefined)
+	const isLibraryHome = $derived(!slug)
 	const isHandHeldDevice = isMobile()
+	const isDetailPage = $derived(Boolean(page.params.uuid))
+	const isAlbumOrArtistDetails = $derived(isDetailPage && (slug === 'albums' || slug === 'artists'))
+
+	type LibraryNavSlug = 'home' | 'tracks' | 'albums' | 'artists' | 'playlists'
 
 	interface NavItem {
-		slug: typeof slug
+		slug: LibraryNavSlug
 		title: string
 		icon: IconType
 	}
 
 	const navItems: NavItem[] = [
+		{
+			slug: 'home',
+			title: 'Library',
+			icon: 'home',
+		},
 		{
 			slug: 'tracks',
 			title: m.tracks(),
@@ -78,7 +89,7 @@
 	{#each navItems as item}
 		<Button
 			as="a"
-			href={`/library/${item.slug}`}
+			href={item.slug === 'home' ? '/library' : `/library/${item.slug}`}
 			kind="blank"
 			tooltip={item.title}
 			class={['flex shrink-0 items-center justify-center', className]}
@@ -86,7 +97,7 @@
 			<div
 				class={[
 					'flex items-center justify-center rounded-full p-2',
-					item.slug === slug && 'bg-secondaryContainer text-onSecondaryContainer',
+					((item.slug === 'home' && !slug) || item.slug === slug) && 'bg-secondaryContainer text-onSecondaryContainer',
 				]}
 			>
 				<Icon type={item.icon} />
@@ -107,44 +118,45 @@
 {/snippet}
 
 {#snippet layoutBottom()}
-	{#if isHandHeldDevice}
+	{#if isHandHeldDevice && !isDetailPage}
 		<div
-			class="pointer-events-auto grid h-16 w-full grid-cols-[repeat(auto-fit,minmax(0,1fr))] bg-surfaceContainer sm:hidden active-view-regular:view-name-[bottom-bar]"
+			class="pointer-events-auto grid h-16 w-full grid-cols-6 items-center border-t border-outline/10 bg-surfaceContainer px-1 pb-[env(safe-area-inset-bottom)] sm:hidden active-view-regular:view-name-[bottom-bar]"
 		>
-			{@render navItemsSnippet('h-full')}
+			{@render navItemsSnippet('h-full min-w-0')}
 		</div>
 	{/if}
 {/snippet}
 
-{#if layoutMode !== 'details'}
-	<div
-		class={[
-			'desktop-sidebar fixed z-1 mt-20 h-max w-max flex-col items-center gap-2 [@media(max-height:500px)]:mt-2',
-			isHandHeldDevice ? 'hidden sm:flex' : 'flex',
-		]}
-	>
+<div
+	class={[
+		'desktop-sidebar fixed left-4 top-20 z-1 hidden h-max w-16 flex-col items-center gap-2 sm:flex [@media(max-height:500px)]:top-2',
+	]}
+>
+	{#if !isDetailPage}
 		{@render navItemsSnippet('h-14 w-20')}
+	{/if}
+</div>
 
-		{#if (slug === 'albums' || slug === 'artists') && isWideLayout}
-			<IconButton
-				icon="sidePanel"
-				tooltip={main.librarySplitLayoutEnabled
-					? m.librarySplitViewDisable()
-					: m.librarySplitViewEnable()}
-				class={['mt-4', main.librarySplitLayoutEnabled && 'rotate-180']}
-				onclick={() => {
-					main.librarySplitLayoutEnabled = !main.librarySplitLayoutEnabled
-				}}
-			/>
-		{/if}
+{#if isLibraryHome}
+	<div class="mx-auto w-full max-w-(--app-max-content-width) px-4 sm:pl-20">
+		<Search name="Library" sortOptions={data.sortOptions} store={data.store} />
 	</div>
-{/if}
-
-<ListDetailsLayout mode={layoutMode} class="mx-auto w-full max-w-(--app-max-content-width) grow">
+	<LibraryHome />
+{:else}
+	<ListDetailsLayout mode={layoutMode} class="mx-auto w-full max-w-(--app-max-content-width) grow">
 	{#snippet list(mode)}
-		<div class={[isHandHeldDevice ? 'sm:pl-20' : 'pl-20', 'flex grow flex-col']}>
+		<div class="flex grow flex-col pl-20">
 			<div class={[mode === 'both' && 'w-100', 'flex grow flex-col px-4']}>
-				<Search name={data.pluralTitle()} sortOptions={data.sortOptions} store={data.store} />
+				<Search
+					name={data.pluralTitle()}
+					sortOptions={data.sortOptions}
+					store={data.store}
+					showSplitButton={!isAlbumOrArtistDetails && (slug === 'albums' || slug === 'artists') && isWideLayout}
+					splitEnabled={main.librarySplitLayoutEnabled}
+					onToggleSplit={() => {
+						main.librarySplitLayoutEnabled = !main.librarySplitLayoutEnabled
+					}}
+			/>
 
 				{#if slug === 'playlists'}
 					<div class="mb-4 flex items-center justify-end">
@@ -222,4 +234,5 @@
 			{/key}
 		</div>
 	{/snippet}
-</ListDetailsLayout>
+	</ListDetailsLayout>
+{/if}

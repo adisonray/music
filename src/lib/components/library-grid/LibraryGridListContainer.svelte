@@ -1,6 +1,6 @@
-<script lang="ts" module>
-	import VirtualContainer from '$lib/components/VirtualContainer.svelte'
-	import { safeInteger } from '$lib/helpers/utils/integers.ts'
+<script lang="ts" generics="Type extends LibraryGridItemType">
+	import { getLibraryValue, type AlbumData } from '$lib/library/get/value.ts'
+	import { dbGetAlbumTracksIdsByName, dbGetArtistTracksIdsByName } from '$lib/library/get/ids'
 	import LibraryGridItem, {
 		type LibraryGridItemType,
 		type LibraryItemGridItemProps,
@@ -11,55 +11,119 @@
 		items: readonly number[]
 		item: LibraryItemGridItemProps<Type>['children']
 	}
-</script>
 
-<script lang="ts" generics="Type extends LibraryGridItemType">
-	const { items, type, item: itemSnippet }: Props<Type> = $props()
+ 	const { items, type, item: itemSnippet }: Props<Type> = $props()
+	let visibleItems = $state<readonly number[]>([])
+	let refreshGeneration = 0
 
-	let containerWidth = $state(0)
+	const refreshVisibleItems = async () => {
+		const generation = ++refreshGeneration
+		const downloaded: number[] = []
 
-	const gap = 8
+		for (const itemId of items) {
+			if (type === 'albums') {
+				const album = await getLibraryValue('albums', itemId, true) as AlbumData | undefined
+				if (!album) continue
 
-	const sizes = $derived.by(() => {
-		const minWidth = containerWidth > 600 ? 180 : 140
+				const trackIds = await dbGetAlbumTracksIdsByName(album.name)
+				if (trackIds.length === 0) continue
 
-		const columns = safeInteger(Math.floor(containerWidth / minWidth), 1)
-		const width = safeInteger(Math.floor((containerWidth - gap * (columns - 1)) / columns))
+				let fullyDownloaded = true
+				for (const trackId of trackIds) {
+					const track = await getLibraryValue('tracks', trackId, true)
+					if (!track?.file) {
+						fullyDownloaded = false
+						break
+					}
+				}
+				if (fullyDownloaded) downloaded.push(itemId)
+				continue
+			}
 
-		const height = width + 72
+			const artist = await getLibraryValue('artists', itemId, true)
+			if (!artist) continue
+			const trackIds = await dbGetArtistTracksIdsByName(artist.name)
+			let hasDownloadedTrack = false
+			for (const trackId of trackIds) {
+				const track = await getLibraryValue('tracks', trackId, true)
+				if (track?.file) {
+					hasDownloadedTrack = true
+					break
+				}
+			}
+			if (hasDownloadedTrack) downloaded.push(itemId)
+		}
 
-		return {
-			width,
-			height: height + gap,
-			columns,
-			heightWithoutGap: height,
+		if (generation === refreshGeneration) {
+			visibleItems = downloaded
+		}
+	}
+
+	$effect(() => {
+		void items
+		void type
+		void refreshVisibleItems()
+		window.addEventListener('adi-music-library-updated', refreshVisibleItems)
+		return () => {
+			window.removeEventListener('adi-music-library-updated', refreshVisibleItems)
 		}
 	})
 </script>
 
-<VirtualContainer
-	bind:offsetWidth={containerWidth}
-	{gap}
-	count={items.length}
-	size={sizes.height}
-	lanes={sizes.columns}
-	key={(index) => `${items[index]}-${index}`}
->
-	{#snippet children(item)}
-		<LibraryGridItem
-			itemId={items[item.index] as number}
-			{type}
-			style="
-				left: {item.lane * sizes.width + item.lane * gap}px;
-				width: {sizes.width}px;
-				height: {item.size - gap}px;
-				transform: translateY({item.start}px);
-			"
-			class="virtual-item top-0"
-		>
-			{#snippet children(itemValue)}
-				{@render itemSnippet(itemValue)}
-			{/snippet}
-		</LibraryGridItem>
-	{/snippet}
-</VirtualContainer>
+{#if visibleItems.length === 0}
+	<div class="m-auto flex min-h-48 items-center justify-center text-center text-onSurfaceVariant">
+		{m.noItemsToDisplay()}
+	</div>
+{:else}
+	<div
+		class={[
+			'library-entity-grid grid w-full content-start items-start justify-start',
+			type === 'artists' && 'artist-grid',
+		]}
+	>
+		{#each visibleItems as itemId (itemId)}
+			<LibraryGridItem {itemId} {type} class="library-entity-card" style="">
+				{#snippet children(itemValue)}
+					{@render itemSnippet(itemValue)}
+				{/snippet}
+			</LibraryGridItem>
+		{/each}
+	</div>
+{/if}
+
+<style>
+	.library-entity-grid {
+		grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+		gap: 16px;
+	}
+
+	.library-entity-grid :global(.library-entity-card) {
+		width: 100%;
+		max-width: 220px;
+		min-width: 0;
+		justify-self: start;
+	}
+
+	@media (max-width: 640px) {
+		.library-entity-grid {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 12px;
+		}
+
+		.library-entity-grid :global(.library-entity-card) {
+			max-width: none;
+		}
+	}
+
+	@media (min-width: 641px) and (max-width: 900px) {
+		.library-entity-grid {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+	}
+
+	@media (min-width: 901px) {
+		.library-entity-grid {
+			grid-template-columns: repeat(auto-fill, minmax(180px, 220px));
+		}
+	}
+</style>

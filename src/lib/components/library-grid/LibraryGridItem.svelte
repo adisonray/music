@@ -3,13 +3,13 @@
 	import { resolve } from '$app/paths'
 	import { page } from '$app/state'
 	import type { RouteId } from '$app/types'
-	import { ripple } from '$lib/attachments/ripple.ts'
-	import type { QueryResult } from '$lib/db/query/query.ts'
-	import { getAnimatedArtwork } from '$lib/helpers/animated-artwork.ts'
 	import { getArtistArtwork } from '$lib/helpers/artist-artwork.ts'
+	import { getArtistProfile } from '$lib/services/spicyamll.ts'
+	import { compressArtwork } from '$lib/helpers/compress-artwork.ts'
+	import type { QueryResult } from '$lib/db/query/query.ts'
 	import { createManagedArtwork } from '$lib/helpers/create-managed-artwork.svelte.ts'
 	import { dbGetAlbumTracksIdsByName, dbGetArtistTracksIdsByName } from '$lib/library/get/ids'
-	import type { AlbumData, ArtistData } from '$lib/library/get/value'
+	import { getLibraryValue, type AlbumData, type ArtistData } from '$lib/library/get/value'
 	import { createAlbumQuery, createArtistQuery } from '$lib/library/get/value-queries'
 	import { UNKNOWN_ITEM } from '$lib/library/types'
 	import Artwork from '../Artwork.svelte'
@@ -17,17 +17,17 @@
 	export type LibraryGridItemType = 'albums' | 'artists'
 
 	export type LibraryGridItemValue<Type extends LibraryGridItemType> = {
-		albums: AlbumData
-		artists: ArtistData
-	}[Type]
+	albums: AlbumData
+	artists: ArtistData
+}[Type]
 
 	export interface LibraryItemGridItemProps<Type extends LibraryGridItemType> {
-		itemId: number
-		type: Type
-		class: ClassValue
-		style: string
-		children: Snippet<[LibraryGridItemValue<Type>]>
-	}
+	itemId: number
+	type: Type
+	class: ClassValue
+	style: string
+	children: Snippet<[LibraryGridItemValue<Type>]>
+}
 </script>
 
 <script lang="ts" generics="Type extends LibraryGridItemType">
@@ -36,7 +36,6 @@
 		itemId,
 		class: className,
 		children,
-		...props
 	}: LibraryItemGridItemProps<Type> = $props()
 
 	const menu = useMenu()
@@ -45,93 +44,110 @@
 
 	type Value = LibraryGridItemValue<Type>
 
-	const query =
-		// prettier-ignore
-		(
-			// svelte-ignore state_referenced_locally only initialized once
-			type === 'albums' ? createAlbumQuery(() => itemId) : createArtistQuery(() => itemId)
-		) as QueryResult<Value>
-	const { value: item } = $derived(query)
+	const query = $derived.by(
+		() =>
+			(type === 'albums' ? createAlbumQuery(() => itemId) : createArtistQuery(() => itemId)) as QueryResult<Value>,
+	)
 
-	let artistArtworkSrc = $state<string | undefined>()
-	const artworkSrc = createManagedArtwork(() => {
+	const item = $derived(query.value)
+
+	let artworkSource = $state<Blob | string | undefined>()
+	const artworkUrl = createManagedArtwork(() => artworkSource)
+
+	const loadArtwork = async (value: Value) => {
 		if (type === 'albums') {
-			return item ? (item as AlbumData).image : undefined
-		}
+			const album = value as AlbumData
 
-		return undefined
-	})
-
-	let animatedArtworkSrc = $state<string | undefined>()
-	$effect(() => {
-		if (type === 'albums' && item) {
-			const album = item as AlbumData
-			const artist = (album.artists[0] as string) ?? ''
-			if (artist === UNKNOWN_ITEM || album.name === UNKNOWN_ITEM) {
-				animatedArtworkSrc = undefined
+			if (album.image instanceof Blob) {
+				artworkSource = await compressArtwork(album.image)
 				return
 			}
-			getAnimatedArtwork(artist, album.name).then((result) => {
-				animatedArtworkSrc = result?.url
+
+			const trackIds = await dbGetAlbumTracksIdsByName(album.name)
+			for (const trackId of trackIds) {
+				const track = await getLibraryValue('tracks', trackId, true)
+				if (!track?.file) continue
+
+				const image = track.image?.small ?? track.image?.full
+				if (image) {
+					artworkSource = image instanceof Blob ? await compressArtwork(image) : image
+					return
+				}
+			}
+
+			return
+		}
+
+		const artist = value as ArtistData
+
+		// Artist cards must use the same artist profile artwork as the
+		// artist detail page. Track artwork is album artwork and must never
+		// be used as an artist portrait.
+		const profile = await getArtistProfile(undefined, artist.name)
+		if (profile.image) {
+			artworkSource = profile.image
+			return
+		}
+
+		// Only use a locally cached artist portrait as a fallback. Never fall
+		// back to a downloaded track's artwork because that is album art.
+		const artistArtwork = await getArtistArtwork(artist.name)
+		if (artistArtwork) artworkSource = artistArtwork
+	}
+
+	$effect(() => {
+		let cancelled = false
+
+		const refreshArtwork = () => {
+			if (cancelled) return
+			artworkSource = undefined
+			const value = item
+			if (!value || value.name === UNKNOWN_ITEM) return
+			void loadArtwork(value).catch(() => {
+				if (!cancelled) artworkSource = undefined
 			})
-		} else if (type === 'artists' && item) {
-			const artist = item as ArtistData
-			artistArtworkSrc = undefined
-			getArtistArtwork(artist.name).then((url) => {
-				artistArtworkSrc = url
-			})
-		} else {
-			animatedArtworkSrc = undefined
+		}
+
+		refreshArtwork()
+		window.addEventListener('adi-music-library-updated', refreshArtwork)
+
+		return () => {
+			cancelled = true
+			window.removeEventListener('adi-music-library-updated', refreshArtwork)
 		}
 	})
 
 	const linkProps = $derived.by(() => {
-		const item = query.value
-		if (!item) {
-			return null
-		}
+		if (!item) return null
 
 		const detailsViewId: RouteId = '/(app)/library/[[slug=libraryEntities]]/[uuid]'
 		const shouldReplace = page.route.id === detailsViewId
 
-		const resolvedHref = resolve('/(app)/library/[[slug=libraryEntities]]/[uuid]', {
-			slug: type,
-			uuid: item.uuid,
-		})
-
 		return {
-			href: resolvedHref,
+			href: resolve('/(app)/library/[[slug=libraryEntities]]/[uuid]', {
+				slug: type,
+				uuid: item.uuid,
+			}),
 			shouldReplace,
 		}
 	})
 
-	const dbGetAlbumOrArtistTrackIdsByName = (name: string) => {
-		if (type === 'albums') {
-			return dbGetAlbumTracksIdsByName(name)
-		}
-
-		return dbGetArtistTracksIdsByName(name)
-	}
+	const getTrackIds = (name: string) =>
+		type === 'albums' ? dbGetAlbumTracksIdsByName(name) : dbGetArtistTracksIdsByName(name)
 
 	const menuItems = () => {
-		if (!(item && linkProps)) {
-			return []
-		}
+		if (!item || !linkProps) return []
 
 		return [
 			{
 				label: m.libraryViewDetails(),
-				action: () => {
-					goto(linkProps.href, { replaceState: linkProps.shouldReplace })
-				},
+				action: () => goto(linkProps.href, { replaceState: linkProps.shouldReplace }),
 			},
 			{
 				label: m.playerAddToQueue(),
 				action: async () => {
 					try {
-						const tracksIds = await dbGetAlbumOrArtistTrackIdsByName(item.name)
-
-						player.addToQueue(tracksIds)
+						player.addToQueue(await getTrackIds(item.name))
 					} catch (error) {
 						snackbar.unexpectedError(error)
 					}
@@ -141,9 +157,7 @@
 				label: m.libraryAddToPlaylist(),
 				action: async () => {
 					try {
-						const tracksIds = await dbGetAlbumOrArtistTrackIdsByName(item.name)
-
-						dialogs.openDialog('addToPlaylist', tracksIds)
+						dialogs.openDialog('addToPlaylist', await getTrackIds(item.name))
 					} catch (error) {
 						snackbar.unexpectedError(error)
 					}
@@ -165,37 +179,41 @@
 </script>
 
 <a
-	{@attach ripple()}
-	{...props}
-	role="listitem"
-	class={[className, 'interactable flex flex-col rounded-lg bg-surfaceContainerHigh']}
+	class={[
+		'library-entity-card group block min-w-0 overflow-hidden rounded-2xl bg-surfaceContainerHigh text-onSurface transition-transform duration-150 hover:-translate-y-0.5 hover:bg-surfaceContainerHighest active:scale-[0.99]',
+		className,
+	]}
 	href={linkProps?.href}
 	data-sveltekit-replacestate={linkProps?.shouldReplace}
-	oncontextmenu={(e) => {
-		e.preventDefault()
-		menu.showFromEvent(e, menuItems(), {
+	oncontextmenu={(event) => {
+		event.preventDefault()
+		menu.showFromEvent(event, menuItems(), {
 			anchor: false,
-			position: { top: e.y, left: e.x },
+			position: { top: event.y, left: event.x },
 		})
 	}}
 >
-	<Artwork
-		src={type === 'artists' ? artistArtworkSrc : artworkSrc()}
-		animatedSrc={animatedArtworkSrc}
-		fallbackIcon={type === 'albums' ? 'album' : 'person'}
-		class="w-full rounded-[inherit]"
-	/>
+	<div class={['relative aspect-square w-full overflow-hidden', type === 'artists' ? 'rounded-full p-3' : 'rounded-2xl']}>
+		<Artwork
+			src={artworkUrl()}
+			alt={item?.name}
+			fallbackIcon={type === 'artists' ? 'person' : 'album'}
+			class={['size-full', type === 'artists' ? 'rounded-full' : 'rounded-2xl']}
+			loading="lazy"
+		/>
 
-	<div
-		class="flex h-18 w-full flex-col justify-center overflow-hidden px-2 text-center text-onSurfaceVariant"
-	>
+	</div>
+
+	<div class="min-w-0 px-2.5 py-3">
 		{#if query.loading}
-			<div class="mb-2 h-2 rounded-xs bg-onSurface/10"></div>
-			<div class="h-1 w-1/8 rounded-xs bg-onSurface/20"></div>
+			<div class="mb-2 h-3 w-3/4 animate-pulse rounded bg-onSurface/10"></div>
+			<div class="h-2 w-1/2 animate-pulse rounded bg-onSurface/8"></div>
 		{:else if query.error}
-			{m.errorUnexpected()}
+			<div class="text-body-sm text-error">{m.errorUnexpected()}</div>
 		{:else if item}
-			{@render children(item)}
+			<div class="truncate text-body-md font-medium text-onSurface">
+				{@render children(item)}
+			</div>
 		{/if}
 	</div>
 </a>

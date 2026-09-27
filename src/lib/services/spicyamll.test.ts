@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeTracks } from './spicyamll.ts'
+import { normalizeTracks, spicyamll } from './spicyamll.ts'
 
 describe('SpicyAMLL normalization', () => {
 	it('normalizes common song fields', () => {
@@ -11,3 +11,9 @@ describe('SpicyAMLL normalization', () => {
 		})
 	})
 })
+
+	it('builds the required native stream URL without changing its parameters', () => {
+		expect(spicyamll.streamUrl(1640353346)).toBe(
+			'https://api.spicyamll.online/stream?song=1640353346&codec=aac&fallback=true&l=en-US&websupport=true',
+		)
+	})

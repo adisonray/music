@@ -6,32 +6,37 @@
 		icon: IconType
 		title: string
 		description: string
+		accent: 'primary' | 'secondary' | 'tertiary'
 	}
 
 	const features: Feature[] = [
 		{
-			icon: 'folder',
-			title: 'Play music from your device',
-			description:
-				'Open a music folder or pick tracks, then keep listening across phones, tablets, laptops, and desktops.',
-		},
-		{
 			icon: 'album',
-			title: 'Tracks, albums, and artists sorted for you',
+			title: 'Artists and albums, one library',
 			description:
-				'Your library is organized from file metadata, so it is easy to browse by track, album, or artist.',
+				'Move between tracks, albums, and artist pages without losing the music you are playing.',
+			accent: 'primary',
 		},
 		{
-			icon: 'playlistMusic',
-			title: 'Queue, favorites, and listening history',
+			icon: 'musicNote',
+			title: 'Lyrics that stay with the player',
 			description:
-				'Save favorites, revisit what you played, and control what comes next with queue, shuffle, and repeat.',
+				'Follow synced lyrics while the artwork and player controls remain right where you need them.',
+			accent: 'secondary',
 		},
 		{
 			icon: 'palette',
-			title: 'Colors that follow your music',
+			title: 'A UI that follows the music',
 			description:
-				"The interface picks up colors from your album artwork and adapts to your system's light or dark theme.",
+				'Album artwork can drive the Material color palette, so the interface changes with what you play.',
+			accent: 'tertiary',
+		},
+		{
+			icon: 'playlistMusic',
+			title: 'Playlists, queue, and history',
+			description:
+				'Build playlists, mark favorites, shuffle or repeat, and decide what comes next.',
+			accent: 'primary',
 		},
 	]
 </script>
@@ -39,22 +44,32 @@
 <Section
 	id="features"
 	class="mktg-content-width"
-	label="What's inside"
-	title="Built around your music"
+	label="The new Adi Music"
+	title="A music player that feels like one system"
+	description="Material surfaces, expressive artwork, and the controls you actually use while listening."
 >
-	<div class="grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-2">
+	<div class="grid max-w-6xl grid-cols-1 gap-5 md:grid-cols-2">
 		{#each features as feature}
-			<article class="feature-card marketing-scroll-enter-soft p-7">
-				<div class="feature-card-icon mb-5">
+			<article
+				class={[
+					'feature-card marketing-scroll-enter-soft p-7',
+					feature.accent === 'secondary'
+						? 'feature-secondary'
+						: feature.accent === 'tertiary'
+							? 'feature-tertiary'
+							: 'feature-primary',
+				]}
+			>
+				<div class="feature-card-icon mb-6">
 					<Icon type={feature.icon} />
 				</div>
-				<h3 class="mb-2 text-title-lg font-semibold text-onSurface">
-					{feature.title}
-				</h3>
-				<p class="text-body-lg leading-relaxed text-onSurfaceVariant">
+
+				<h3 class="mb-2 text-title-lg font-semibold text-onSurface">{feature.title}</h3>
+				<p class="max-w-xl text-body-lg leading-relaxed text-onSurfaceVariant">
 					{feature.description}
 				</p>
-				<span class="feature-card-deco"><Icon type={feature.icon} /></span>
+
+				<div class="feature-line" aria-hidden="true"></div>
 			</article>
 		{/each}
 	</div>
@@ -65,52 +80,61 @@
 		position: relative;
 		overflow: hidden;
 		display: flex;
+		min-height: 15rem;
 		flex-direction: column;
+		border: 1px solid --alpha(var(--color-outline) / 0.18);
 		border-radius: 1.75rem;
-		border: 1px solid --alpha(var(--color-outline) / 0.2);
-		background: linear-gradient(
-			155deg,
-			--alpha(var(--color-surfaceContainerHighest) / 0.97),
-			--alpha(var(--color-surfaceContainerHigh) / 0.9)
-		);
-		box-shadow: 0 4px 16px --alpha(var(--color-shadow) / 0.06);
+		background: var(--color-surfaceContainer);
+		box-shadow: 0 5px 18px --alpha(var(--color-shadow) / 0.07);
 		transition:
-			border-color 0.2s ease,
-			box-shadow 0.2s ease;
+			transform 0.25s ease,
+			border-color 0.25s ease,
+			box-shadow 0.25s ease;
 	}
 
 	.feature-card:hover {
-		border-color: --alpha(var(--color-primary) / 0.4);
-		box-shadow: 0 8px 28px --alpha(var(--color-shadow) / 0.1);
+		transform: translateY(-3px);
+		border-color: --alpha(var(--color-primary) / 0.35);
+		box-shadow: 0 12px 32px --alpha(var(--color-shadow) / 0.12);
 	}
 
 	.feature-card-icon {
 		display: flex;
+		width: 3.5rem;
+		height: 3.5rem;
 		align-items: center;
 		justify-content: center;
-		width: 3.25rem;
-		height: 3.25rem;
-		border-radius: 1rem;
-		background: --alpha(var(--color-primaryContainer) / 0.55);
+		border-radius: 1.15rem;
+		background: --alpha(var(--color-primaryContainer) / 0.65);
 		color: var(--color-primary);
 	}
 
-	.feature-card-deco {
+	.feature-secondary .feature-card-icon {
+		background: --alpha(var(--color-secondaryContainer) / 0.65);
+		color: var(--color-secondary);
+	}
+
+	.feature-tertiary .feature-card-icon {
+		background: --alpha(var(--color-tertiaryContainer) / 0.65);
+		color: var(--color-tertiary);
+	}
+
+	.feature-line {
 		position: absolute;
-		bottom: -0.75rem;
-		right: -0.5rem;
-		width: 6.5rem;
-		height: 6.5rem;
-		color: var(--color-primary);
-		opacity: 0.06;
-		pointer-events: none;
-		display: flex;
-		align-items: center;
-		justify-content: center;
+		right: 1.5rem;
+		bottom: 1.5rem;
+		left: 1.5rem;
+		height: 0.25rem;
+		border-radius: 999px;
+		background: linear-gradient(90deg, --alpha(var(--color-primary) / 0.65), transparent);
+		opacity: 0.7;
 	}
 
-	.feature-card-deco :global(svg) {
-		width: 100%;
-		height: 100%;
+	.feature-secondary .feature-line {
+		background: linear-gradient(90deg, --alpha(var(--color-secondary) / 0.65), transparent);
+	}
+
+	.feature-tertiary .feature-line {
+		background: linear-gradient(90deg, --alpha(var(--color-tertiary) / 0.65), transparent);
 	}
 </style>

@@ -23,6 +23,8 @@
 		onItemClick?: (data: TrackItemClick) => void
 		showReorderButton?: boolean
 		showFavoriteButton?: boolean
+		showDownloadButton?: boolean
+		downloadButtonLarge?: boolean
 		onReorder?: (fromIndex: number, toIndex: number) => void
 	}
 </script>
@@ -41,6 +43,8 @@
 		onItemClick = defaultOnItemClick,
 		showReorderButton = false,
 		showFavoriteButton = true,
+		showDownloadButton = true,
+		downloadButtonLarge = false,
 		onReorder,
 	}: Props = $props()
 
@@ -133,6 +137,8 @@
 			selected={selection.has(trackId)}
 			{showReorderButton}
 			{showFavoriteButton}
+			{showDownloadButton}
+			downloadButtonLarge={downloadButtonLarge}
 			reorderDragging={drag?.fromIndex === item.index}
 			reorderInsertBefore={drag !== null && drag.insertIndex === item.index}
 			reorderInsertAfter={drag !== null && drag.insertIndex === item.index + 1}

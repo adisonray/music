@@ -11,7 +11,7 @@
 		/** Album name (optional) */
 		songAlbum?: string
 		/** Song duration in milliseconds */
-		songDurationMs?: number
+	songDurationMs?: number
 		/** "Title - Artist" search phrase for the LyricsPlus catalog fallback */
 		query?: string
 		class?: string

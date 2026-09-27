@@ -61,7 +61,7 @@ import { browser } from '$app/environment'
 
         registerRemoteTrack({
             id,
-            remoteId: Number(input.id) || 0,
+            remoteId: String(input.id),
             streaming: true,
             uuid: key,
             name,
@@ -109,14 +109,15 @@ import { browser } from '$app/environment'
     )
 
     const cleanArtUrl = (url: unknown) => {
-        if (typeof url !== 'string' || !url) return 'favicon.svg'
+        if (typeof url !== 'string' || !url.trim()) return ''
         const value = url
+            .trim()
             .replace(/\{w\}/g, '600')
             .replace(/\{h\}/g, '600')
             .replace(/\{c\}/g, 'bb')
             .replace(/\{f\}/g, 'jpg')
             .replace(/\d+x\d+bb\./, '600x600bb.')
-        return /^https?:\/\//i.test(value) ? value : 'favicon.svg'
+        return /^https?:\/\//i.test(value) ? value : ''
     }
 
     const shuffle = <T,>(items: T[]) => {
@@ -140,6 +141,37 @@ import { browser } from '$app/environment'
 
     const parseRecommendationSearch = (input: unknown): DiscoveryItem[] => parseDiscoveryResults(input)
 
+    // Search/catalog responses can return artist and album resources without artwork.
+    // Detail pages already recover artwork from their songs, so do the same for grid cards.
+    const enrichDiscoveryArtwork = async (items: DiscoveryItem[]) => {
+        const output = [...items]
+        const missingArtists = output.filter((item) => item.type === 'artist' && !item.artUrl)
+        const missingAlbums = output.filter((item) => item.type === 'album' && !item.artUrl)
+
+        await Promise.all([
+            ...missingArtists.map(async (item) => {
+                try {
+                    const songs = await getSongsForArtist(item.id, item.name)
+                    const art = songs.map((song) => cleanArtUrl(song.image)).find(Boolean)
+                    if (art) item.artUrl = art
+                } catch {
+                    // Keep the fallback icon if the artist endpoint has no artwork.
+                }
+            }),
+            ...missingAlbums.map(async (item) => {
+                try {
+                    const tracks = normalizeTracks(await spicyamll.album({ id: item.id, l: 'en-US' }))
+                    const art = tracks.map((track) => cleanArtUrl(track.image)).find(Boolean)
+                    if (art) item.artUrl = art
+                } catch {
+                    // Keep the fallback icon if the album endpoint has no artwork.
+                }
+            }),
+        ])
+
+        return output
+    }
+
     const loadRecommendations = async () => {
         loadingRecommendations = true
         try {
@@ -156,8 +188,8 @@ import { browser } from '$app/environment'
             }))
 
             if (cached) {
-                topPicks = cached.topPicks
-                recommendations = cached.recommendations
+                topPicks = await enrichDiscoveryArtwork(cached.topPicks)
+                recommendations = await enrichDiscoveryArtwork(cached.recommendations)
                 return
             }
             if (history.length) {
@@ -174,7 +206,10 @@ import { browser } from '$app/environment'
                 const groups = await Promise.all(artists.map(async (artist) => {
                     try { return parseRecommendationSearch(await spicyamll.search({ term: artist, limit: 15 })) } catch { return [] }
                 }))
-                topPicks = [latestItem, ...shuffle(dedupeItems(groups.flat()).filter((x) => !(x.type === 'song' && x.id === latestItem.id))).slice(0, 10)]
+                topPicks = await enrichDiscoveryArtwork([
+                    latestItem,
+                    ...shuffle(dedupeItems(groups.flat()).filter((x) => !(x.type === 'song' && x.id === latestItem.id))).slice(0, 10),
+                ])
             } else {
                 topPicks = []
             }
@@ -190,7 +225,9 @@ import { browser } from '$app/environment'
                     try { return parseRecommendationSearch(await spicyamll.recommendations({ name: 'search-landing' })) } catch { return [] }
                 })(),
             ])
-            recommendations = shuffle(dedupeItems(groups.flat()).filter((item) => item.type !== 'song' || !listenedIds.has(item.id))).slice(0, 90)
+            recommendations = await enrichDiscoveryArtwork(
+                shuffle(dedupeItems(groups.flat()).filter((item) => item.type !== 'song' || !listenedIds.has(item.id))).slice(0, 90),
+            )
             cacheDiscoveryRecommendations(topPicks, recommendations)
         } catch (e) {
             console.warn('[Discovery] Recommendations failed:', e)
@@ -209,7 +246,7 @@ import { browser } from '$app/environment'
         results = []
 
         try {
-            results = await searchDiscovery(term)
+            results = await enrichDiscoveryArtwork(await searchDiscovery(term))
         } catch (e) {
             error = e instanceof Error ? e.message : 'Unable to search SpicyAMLL'
         } finally {
@@ -227,7 +264,11 @@ import { browser } from '$app/environment'
     }
 
     const viewArtist = async (artist: DiscoveryItem) => {
-        await goto(`/artist/${encodeURIComponent(artist.id)}?name=${encodeURIComponent(artist.name)}`)
+        const params = new URLSearchParams({
+            name: artist.name,
+            art: artist.artUrl || '',
+        })
+        await goto(`/artist/${encodeURIComponent(artist.id)}?${params.toString()}`)
     }
 
     onMount(() => {

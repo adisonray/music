@@ -27,7 +27,14 @@
 		onpointerenter,
 	}: Props = $props()
 
-	const clickHandler = (e: KeyboardEvent | MouseEvent) => onclick?.(e)
+	const isNestedInteractiveTarget = (target: EventTarget | null) =>
+		target instanceof HTMLElement &&
+			Boolean(target.closest('button, a, input, select, textarea, [role="button"]'))
+
+	const clickHandler = (e: KeyboardEvent | MouseEvent) => {
+		if (isNestedInteractiveTarget(e.target)) return
+		onclick?.(e)
+	}
 </script>
 
 <div

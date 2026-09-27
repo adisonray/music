@@ -31,9 +31,9 @@ const config = {
 
 		csp: {
 			directives: {
-				'default-src': ['none'],
+				'default-src': ['self'],
 
-				'script-src': ['self', 'https://gc.zgo.at/', 'https://nurislamaibekuly.github.io'],
+				'script-src': ['self', 'unsafe-inline', 'https://gc.zgo.at/', 'https://nurislamaibekuly.github.io'],
 
 				'style-src': ['self', 'unsafe-inline', 'https://nurislamaibekuly.github.io'],
 
@@ -64,6 +64,7 @@ const config = {
 
 					// SpicyAMLL / Discovery artwork
 					'https://api.spicyamll.online',
+					'https:',
 				],
 
 				'media-src': [
@@ -80,20 +81,26 @@ const config = {
 					'https://*.mzstatic.com',
 
 					// Deezer previews
-					'https://cdns-preview-*.dzcdn.net',
+					'https://*.dzcdn.net',
 
 					// SpicyAMLL streaming
 					'https://api.spicyamll.online',
+					'https:',
 				],
 
-				'font-src': ['self'],
+				'font-src': ['self', 'data:'],
 
 				'connect-src': [
 					'self',
 
+					// Optional local Discord Rich Presence bridge
+					'http://127.0.0.1:6463',
+					'http://localhost:6463',
+
 					env.PUBLIC_GOAT_COUNTER_URL ?? '',
 
 					// Lyrics
+					'https://api.amll.dev',
 					'https://lyrics.imreallyadi.space',
 					'https://lyrics-api.boidu.dev',
 					'https://lrclib.net',

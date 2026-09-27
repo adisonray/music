@@ -1,4 +1,3 @@
-import { redirect } from '@sveltejs/kit'
 import { innerWidth } from 'svelte/reactivity/window'
 import type { RouteId } from '$app/types'
 import type { LayoutMode } from '$lib/components/ListDetailsLayout.svelte'
@@ -108,11 +107,8 @@ type LoadResult = LoadDataResult<LibraryStoreName> & {
 }
 
 export const load: LayoutLoad = async (event): Promise<LoadResult> => {
-	const { slug } = event.params
-	if (!slug) {
-		redirect(303, '/library/tracks')
-	}
-
+	const { slug: routeSlug } = event.params
+	const slug = routeSlug ?? 'tracks'
 	const data = await loadData(slug)
 
 	const isWideLayout = () => (innerWidth.current ?? 0) > 1154

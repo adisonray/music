@@ -84,6 +84,7 @@ class MockAudio {
 
 	onplay: (() => void) | null = null
 	onpause: (() => void) | null = null
+	onerror: (() => void) | null = null
 	onended: (() => void) | null = null
 	ondurationchange: (() => void) | null = null
 	ontimeupdate: (() => void) | null = null

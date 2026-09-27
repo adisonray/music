@@ -13,6 +13,8 @@ export interface SpicyTrack {
 	artwork?: string
 	duration?: number
 	year?: number | string
+	contentRating?: string
+	isExplicit?: boolean
 	[key: string]: unknown
 }
 
@@ -89,7 +91,7 @@ export const spicyamll = {
 	recommendations: (params: SpicyApiParams) => request<unknown>('/recommendations', params),
 	catalogSearch: (storefront: string, params: SpicyApiParams) =>
 		request<unknown>(`/get/v1/catalog/${encodeURIComponent(storefront)}/search`, params).then(unwrap),
-	artist: (params: SpicyApiParams) => request<unknown>('/get/artist', params).then(unwrap),
+	artist: (params: SpicyApiParams) => request<unknown>('/artist', params).then(unwrap),
 	album: (params: SpicyApiParams) => request<unknown>('/album', params).then(unwrap),
 	albumTracks: async (albumId: string | number) => {
 		const payload = await request<unknown>('/album', { id: String(albumId), l: 'en-US' })
@@ -118,8 +120,8 @@ export const spicyamll = {
 	musicVideoById: (mvId: string | number) => request<unknown>(`/get/musicvideo/${encodeURIComponent(mvId)}`).then(unwrap),
 	musicVideoDownload: (params: SpicyApiParams) => request<unknown>('/get/musicvideo/download', params).then(unwrap),
 	musicVideoStream: (params: SpicyApiParams) => request<unknown>('/get/musicvideo/stream', params).then(unwrap),
-	artistAlbums: (params: SpicyApiParams) => request<unknown>('/get/artist/albums', params).then(unwrap),
-	artistSongs: (params: SpicyApiParams) => request<unknown>('/get/artist/songs', params).then(unwrap),
+	artistAlbums: (params: SpicyApiParams) => request<unknown>('/artist/albums', params).then(unwrap),
+	artistSongs: (params: SpicyApiParams) => request<unknown>('/artist/songs', params).then(unwrap),
 	downloadFormat: (fmt: string, params: SpicyApiParams) =>
 		request<unknown>(`/get/download/${encodeURIComponent(fmt)}`, params).then(unwrap),
 	songs: (id: string | number) => request<unknown>(`/get/songs/${encodeURIComponent(id)}`).then(unwrap),
@@ -167,14 +169,15 @@ export type DiscoveryResource = {
 	bio?: string
 }
 
-const cleanDiscoveryArtwork = (url: unknown) => {
-	if (typeof url !== 'string' || !url) return 'favicon.svg'
+const cleanDiscoveryArtwork = (url: unknown, size = 400) => {
+	if (typeof url !== 'string' || !url.trim()) return ''
 	return url
-		.replace(/\{w\}/g, '1000')
-		.replace(/\{h\}/g, '1000')
+		.trim()
+		.replace(/\{w\}/g, String(size))
+		.replace(/\{h\}/g, String(size))
 		.replace(/\{c\}/g, 'bb')
 		.replace(/\{f\}/g, 'jpg')
-		.replace(/\d+x\d+bb\./, '1000x1000bb.')
+		.replace(/\d+x\d+bb\./, `${size}x${size}bb.`)
 }
 
 const parseDiscoveryGroup = (
@@ -258,12 +261,58 @@ const parseCatalogResources = (input: unknown): DiscoveryResource[] => {
 	}).filter((item): item is DiscoveryResource => Boolean(item))
 }
 
-export const parseDiscoveryResults = (input: unknown): DiscoveryResource[] => [
-	...parseDiscoveryGroup(input, 'song'),
-	...parseDiscoveryGroup(input, 'album'),
-	...parseDiscoveryGroup(input, 'artist'),
-	...parseCatalogResources(input),
-]
+export const parseDiscoveryResults = (input: unknown): DiscoveryResource[] => {
+	const songs = parseDiscoveryGroup(input, 'song')
+	const albums = parseDiscoveryGroup(input, 'album')
+	const artists = parseDiscoveryGroup(input, 'artist')
+	const catalog = parseCatalogResources(input)
+	const all = [...songs, ...albums, ...artists, ...catalog]
+
+	// Apple Music can omit artwork on artist resources and some catalog
+	// deployments omit it on album resources. Reuse artwork from a matching
+	// song/album in the same response instead of sending a broken placeholder.
+	const artworkByArtist = new Map<string, string>()
+	const artworkByAlbum = new Map<string, string>()
+	for (const item of all) {
+		const art = item.artUrl
+		if (!art) continue
+		if (item.artist) artworkByArtist.set(item.artist.trim().toLowerCase(), art)
+		if (item.album) artworkByAlbum.set(item.album.trim().toLowerCase(), art)
+		if (item.type === 'album') artworkByAlbum.set(item.name.trim().toLowerCase(), art)
+	}
+	// Prefer explicit recordings when Apple Music returns both explicit and clean
+	// versions of the same song. If only a clean recording exists, omit it rather
+	// than silently presenting a censored version.
+	const songGroups = new Map<string, DiscoveryResource[]>()
+	for (const item of all) {
+		if (item.type !== 'song') continue
+		const key = [item.name.trim().toLowerCase(), item.artist.trim().toLowerCase()].join('|')
+		const group = songGroups.get(key) ?? []
+		group.push(item)
+		songGroups.set(key, group)
+	}
+	const hiddenSongIds = new Set<string>()
+	for (const group of songGroups.values()) {
+		const explicit = group.filter((item) => {
+			const raw = item as DiscoveryResource & { contentRating?: string }
+			return raw.contentRating?.toLowerCase() === 'explicit'
+		})
+		if (explicit.length) {
+			for (const item of group) if (!explicit.includes(item)) hiddenSongIds.add(item.id)
+		}
+	}
+
+	return all.filter((item) => !hiddenSongIds.has(item.id)).map((item) => {
+		if (item.artUrl) return item
+		if (item.type === 'artist') {
+			return { ...item, artUrl: artworkByArtist.get(item.name.trim().toLowerCase()) ?? '' }
+		}
+		if (item.type === 'album') {
+			return { ...item, artUrl: artworkByAlbum.get(item.name.trim().toLowerCase()) ?? '' }
+		}
+		return item
+	})
+}
 
 export const searchDiscovery = async (query: string, limit = 50) => {
 	// Apple Music Catalog Search rejects limit values above 50.
@@ -345,11 +394,15 @@ export const normalizeTracks = (input: unknown): SpicyTrack[] => {
 			const artworkUrl = String(
 				artwork.url ?? item.image ?? item.artwork ?? item.cover ?? item.coverUrl ?? '',
 			)
-				.replace('{w}', '600')
-				.replace('{h}', '600')
-				.replace('{f}', 'jpg')
+				.replace(/\{w\}/g, '600')
+				.replace(/\{h\}/g, '600')
+				.replace(/\{c\}/g, 'bb')
+				.replace(/\{f\}/g, 'jpg')
+				.replace(/\d+x\d+bb\./, '400x400bb.')
 
 			const artistName = String(attributes.artistName ?? item.artist ?? item.artistName ?? '')
+			const contentRating = String(attributes.contentRating ?? item.contentRating ?? item.content_rating ?? '')
+			const isExplicit = contentRating.toLowerCase() === 'explicit' || item.isExplicit === true || item.isExplicit === 'true'
 			const albumName = String(attributes.albumName ?? item.album ?? item.albumName ?? '')
 			const rawId = item.id ?? item.songId ?? item.song_id ?? item.trackId ?? item.musicId
 			const parsedId = rawId !== undefined && rawId !== null && rawId !== '' ? rawId : index
@@ -370,6 +423,8 @@ export const normalizeTracks = (input: unknown): SpicyTrack[] => {
 				duration:
 					Number(attributes.durationInMillis ?? item.duration ?? item.durationSeconds ?? 0) /
 					(attributes.durationInMillis !== undefined ? 1000 : 1),
+				contentRating,
+				isExplicit,
 				year: attributes.releaseDate
 					? String(attributes.releaseDate).slice(0, 4)
 					: (item.year as string | number | undefined),
@@ -419,13 +474,202 @@ export const searchAlbums = async (query: string) => {
 	return []
 }
 
-export const getSongsForArtist = async (artistId: string | number, artistName?: string) => {
-	const candidates = [
-		{ artist: artistId },
-		{ id: artistId },
-		{ artistId },
-		...(artistName ? [{ name: artistName }, { artist: artistName }] : []),
+const iTunesArtistIdCache = new Map<string, string>()
+
+export const resolveAppleMusicArtistId = async (artistName: string): Promise<string | undefined> => {
+	const key = artistName.trim().toLowerCase()
+	if (!key) return undefined
+	const cached = iTunesArtistIdCache.get(key)
+	if (cached) return cached
+
+	try {
+		const url = new URL('https://itunes.apple.com/search')
+		url.searchParams.set('term', artistName)
+		url.searchParams.set('entity', 'musicArtist')
+		url.searchParams.set('limit', '10')
+		url.searchParams.set('country', 'US')
+		const response = await fetch(url, { headers: { Accept: 'application/json' } })
+		if (!response.ok) return undefined
+		const payload = await response.json() as { results?: Array<Record<string, unknown>> }
+		const results = Array.isArray(payload.results) ? payload.results : []
+		const exact = results.find((result) =>
+			String(result.artistName ?? '').trim().toLowerCase() === key && result.artistId != null,
+		)
+		const match = exact ?? results.find((result) => result.artistId != null)
+		if (!match) return undefined
+		const id = String(match.artistId)
+		iTunesArtistIdCache.set(key, id)
+		return id
+	} catch {
+		return undefined
+	}
+}
+
+export interface SpicyArtistProfile {
+	id: string
+	name: string
+	image: string
+	genre: string
+	bio: string
+}
+
+const cleanArtistImage = (value: unknown) => cleanDiscoveryArtwork(value, 400)
+
+const artistProfileCache = new Map<string, { expiresAt: number; value: SpicyArtistProfile }>()
+const artistProfilePending = new Map<string, Promise<SpicyArtistProfile>>()
+const ARTIST_PROFILE_CACHE_TTL = 60 * 60_000
+
+export const getArtistProfile = async (
+	artistId: string | number | undefined,
+	artistName: string,
+): Promise<SpicyArtistProfile> => {
+	const cacheKey = artistName.trim().toLowerCase()
+	const cached = artistProfileCache.get(cacheKey)
+	if (cached && cached.expiresAt > Date.now()) return cached.value
+	if (cached) artistProfileCache.delete(cacheKey)
+
+	const pending = artistProfilePending.get(cacheKey)
+	if (pending) return pending
+
+	const request = (async (): Promise<SpicyArtistProfile> => {
+	// The canonical artist identifier for SpicyAMLL is the Apple Music/iTunes artistId.
+	// Resolve it from iTunes first so local library IDs never get sent as artist IDs.
+	const appleMusicArtistId = await resolveAppleMusicArtistId(artistName)
+	const canonicalArtistId = appleMusicArtistId ?? artistId
+	const candidates: SpicyApiParams[] = [
+		...(canonicalArtistId !== undefined ? [{ artist: canonicalArtistId }] : []),
+		{ artist: artistName },
+		{ name: artistName },
+		{ query: artistName },
 	]
+
+	for (const params of candidates) {
+		try {
+			const raw = unwrap<unknown>(await spicyamll.artist(params))
+			const values = Array.isArray(raw) ? raw : [raw]
+
+			for (const value of values) {
+				if (!value || typeof value !== 'object') continue
+				const record = value as Record<string, unknown>
+				const attributes =
+					record.attributes && typeof record.attributes === 'object'
+						? record.attributes as Record<string, unknown>
+						: record
+				const artwork =
+					attributes.artwork && typeof attributes.artwork === 'object'
+						? attributes.artwork as Record<string, unknown>
+						: {}
+
+				const name = String(attributes.name ?? record.name ?? artistName)
+				const id = String(attributes.artistId ?? record.artistId ?? record.id ?? artistId ?? '')
+				const image = cleanArtistImage(
+					artwork.url ?? attributes.artworkUrl100 ?? attributes.artworkUrl ?? record.image ?? record.artwork,
+				)
+				const genreNames = Array.isArray(attributes.genreNames) ? attributes.genreNames : []
+				const genre = String(attributes.genre ?? genreNames[0] ?? record.genre ?? '')
+				const editorial =
+					attributes.editorialNotes && typeof attributes.editorialNotes === 'object'
+						? attributes.editorialNotes as Record<string, unknown>
+						: {}
+				const bio = String(
+					attributes.bio ??
+						attributes.description ??
+						editorial.standard ??
+						editorial.short ??
+						record.bio ??
+						'',
+				)
+
+				return { id, name, image, genre, bio }
+			}
+		} catch {}
+	}
+
+		const empty: SpicyArtistProfile = {
+			id: String(canonicalArtistId ?? ''),
+			name: artistName,
+			image: '',
+			genre: '',
+			bio: '',
+		}
+		return empty
+	})()
+
+	artistProfilePending.set(cacheKey, request)
+	try {
+		const value = await request
+		artistProfileCache.set(cacheKey, { value, expiresAt: Date.now() + ARTIST_PROFILE_CACHE_TTL })
+		return value
+	} finally {
+		artistProfilePending.delete(cacheKey)
+	}
+}
+
+export const getAlbumsForArtist = async (artistId: string | number | undefined, artistName: string) => {
+	const appleMusicArtistId = await resolveAppleMusicArtistId(artistName)
+	const canonicalArtistId = appleMusicArtistId ?? artistId
+	const candidates: SpicyApiParams[] = canonicalArtistId !== undefined
+		? [{ artist: canonicalArtistId }]
+		: [{ artist: artistName }]
+	for (const params of candidates) {
+		try {
+			const raw = unwrap<unknown>(await spicyamll.artistAlbums(params))
+			const values = Array.isArray(raw) ? raw : [raw]
+			const albums: Array<{ id: string; name: string; artist: string; image: string; year: string }> = []
+
+			const collect = (value: unknown) => {
+				if (Array.isArray(value)) {
+					for (const entry of value) collect(entry)
+					return
+				}
+				if (!value || typeof value !== 'object') return
+				const record = value as Record<string, unknown>
+				const attributes =
+					record.attributes && typeof record.attributes === 'object'
+						? record.attributes as Record<string, unknown>
+						: record
+				const type = String(record.type ?? '')
+				if (type && type !== 'albums' && type !== 'album' && !record.collectionId && !record.albumId) {
+					for (const child of Object.values(record)) collect(child)
+					return
+				}
+				const id = String(record.id ?? attributes.collectionId ?? attributes.albumId ?? record.albumId ?? '')
+				const name = String(attributes.name ?? attributes.collectionName ?? record.name ?? record.title ?? '')
+				if (!id || !name) {
+					for (const child of Object.values(record)) collect(child)
+					return
+				}
+				const artwork =
+					attributes.artwork && typeof attributes.artwork === 'object'
+						? attributes.artwork as Record<string, unknown>
+						: {}
+				const image = cleanArtistImage(
+					artwork.url ?? attributes.artworkUrl100 ?? record.image ?? record.artwork,
+				)
+				const releaseDate = String(attributes.releaseDate ?? record.releaseDate ?? attributes.year ?? '')
+				albums.push({
+					id,
+					name,
+					artist: String(attributes.artistName ?? record.artist ?? artistName),
+					image,
+					year: releaseDate.slice(0, 4),
+				})
+			}
+			for (const value of values) collect(value)
+			return albums.filter((album, index, all) => all.findIndex((entry) => entry.id === album.id) === index)
+		} catch {}
+	}
+	return []
+}
+
+export const getSongsForArtist = async (artistId: string | number | undefined, artistName?: string) => {
+	const resolvedId = artistName ? await resolveAppleMusicArtistId(artistName) : undefined
+	const canonicalArtistId = resolvedId ?? artistId
+	const candidates: SpicyApiParams[] = canonicalArtistId !== undefined
+		? [{ artist: canonicalArtistId }]
+		: artistName
+			? [{ artist: artistName }]
+			: []
 	for (const params of candidates) {
 		try {
 			const value = normalizeTracks(await spicyamll.artistSongs(params))
@@ -435,20 +679,49 @@ export const getSongsForArtist = async (artistId: string | number, artistName?: 
 	return []
 }
 
+const preferExplicitRecordings = (tracks: SpicyTrack[]) => {
+	const groups = new Map<string, SpicyTrack[]>()
+	for (const track of tracks) {
+		const key = [normalizeForSearch(track.name), normalizeForSearch(track.artist ?? track.artists?.join(', '))].join('|')
+		const group = groups.get(key) ?? []
+		group.push(track)
+		groups.set(key, group)
+	}
+
+	const selected: SpicyTrack[] = []
+	for (const group of groups.values()) {
+		const explicit = group.find((track) => track.isExplicit === true || track.contentRating?.toLowerCase() === 'explicit')
+		if (explicit) selected.push(explicit)
+		else selected.push(...group.filter((track) => track.contentRating?.toLowerCase() !== 'clean' && track.contentRating?.toLowerCase() !== 'censored'))
+	}
+	return selected
+}
+
+const normalizeForSearch = (value: unknown) => String(value ?? '').normalize('NFKC').toLowerCase().replace(/[\\p{P}\\p{S}]+/gu, ' ').replace(/\\s+/g, ' ').trim()
+
 export const searchCatalog = async (query: string) => {
 	const params = {
 		term: query,
 		l: 'en-US',
-		limit: 25,
+		limit: 50,
 		offset: 0,
 	}
 
+	// The Apple Music catalog response is the authoritative search source for
+	// playback IDs. Its song resources use Apple Music track IDs, which are the
+	// IDs accepted by SpicyAMLL's /stream endpoint. The legacy /search endpoint
+	// can return lyric/provider IDs that look valid but are not streamable.
 	try {
-		const response = await spicyamll.search(params)
-		const tracks = normalizeTracks(response)
-		if (tracks.length) return tracks
+		const catalogTracks = normalizeTracks(await spicyamll.catalogSearch('us', params))
+		if (catalogTracks.length) return preferExplicitRecordings(catalogTracks)
 	} catch {}
 
-	const response = await spicyamll.catalogSearch('us', params)
-	return normalizeTracks(response)
+	// Keep the legacy endpoint as a compatibility fallback for older
+	// SpicyAMLL deployments that do not expose catalog search.
+	try {
+		const legacyTracks = normalizeTracks(await spicyamll.search(params))
+		return preferExplicitRecordings(legacyTracks)
+	} catch {
+		return []
+	}
 }

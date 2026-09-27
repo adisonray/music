@@ -35,8 +35,16 @@ const requestArtist = async (artistId: string): Promise<AppleMusicArtist | null>
 	}
 }
 
-const artworkUrl = (url?: string, size = 600) =>
-	url?.replace(/\{w\}/g, String(size)).replace(/\{h\}/g, String(size)).replace(/\{f\}/g, 'jpg').replace(/\{c\}/g, 'bb') || 'favicon.svg'
+const artworkUrl = (url?: string, size = 600) => {
+	if (!url?.trim()) return undefined
+	return url
+		.trim()
+		.replace(/\{w\}/g, String(size))
+		.replace(/\{h\}/g, String(size))
+		.replace(/\{f\}/g, 'jpg')
+		.replace(/\{c\}/g, 'bb')
+		.replace(/\d+x\d+bb\./, `${size}x${size}bb.`)
+}
 
 const mapResource = (item: AppleMusicResource, type: 'song' | 'album', artistName: string): DiscoveryResource | null => {
 	const attributes = item.attributes

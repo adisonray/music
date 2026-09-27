@@ -27,14 +27,14 @@
 >
 	<div class="flex size-full flex-col items-center justify-between gap-4 sm:px-4 sm:pt-2 sm:pb-4">
 		<Timeline class="max-sm:hidden" />
-		<div class="flex h-min w-full grow grid-cols-[1fr_max-content_1fr] items-center sm:grid">
-			<div class="flex grow items-center">
+		<div class="flex h-min w-full grow grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center sm:grid">
+			<div class="flex min-w-0 grow items-center">
 				<Button
 					as="a"
 					href="/player"
 					kind="blank"
 					tooltip={m.playerOpenFullPlayer()}
-					class="max-sm:rounded-r-4 group flex grow items-center rounded-lg pr-2 max-sm:p-2 sm:h-11 sm:max-w-45"
+					class="max-sm:rounded-r-4 group flex min-w-0 grow items-center rounded-lg pr-2 max-sm:p-2 sm:h-12 sm:max-w-70"
 				>
 					<div
 						class="relative -z-1 size-11 shrink-0 overflow-hidden rounded-lg bg-onSecondary active-view-player:view-name-[pl-artwork]"
@@ -54,7 +54,7 @@
 					</div>
 
 					{#if track}
-						<div class="mr-1 ml-4 grid min-w-0" lang={getItemLanguage(track.language)}>
+						<div class="ml-3 mr-1 grid min-w-0 sm:ml-3" lang={getItemLanguage(track.language)}>
 							<div class="truncate text-body-md">
 								{track.name}
 							</div>
@@ -66,7 +66,7 @@
 				<PlayerFavoriteButton />
 			</div>
 
-			<div class="ml-auto flex gap-2 pr-2 sm:hidden">
+			<div class="mx-auto flex items-center gap-2 sm:hidden">
 				<PlayToggleButton />
 
 				<PlayNextButton class="max-xss:hidden" />
@@ -74,7 +74,7 @@
 
 			<MainControls class="max-sm:hidden" />
 
-			<div class="ml-auto flex items-center gap-2 pr-2 max-sm:hidden">
+			<div class="ml-auto flex shrink-0 items-center gap-1 pr-1 max-sm:hidden">
 				{#if mainStore.volumeSliderEnabled}
 					<VolumeSlider />
 				{/if}
@@ -88,6 +88,25 @@
 
 	.controls {
 		grid-template-columns: 1fr max-content 1fr;
+	}
+
+	@media (min-width: 640px) {
+		#mini-player .flex.h-min.w-full.grow {
+			min-height: 52px;
+		}
+
+		#mini-player .flex.h-min.w-full.grow > :first-child {
+			width: 100%;
+			max-width: 24rem;
+		}
+
+		#mini-player .flex.h-min.w-full.grow > :nth-child(2) {
+			justify-self: center;
+		}
+
+		#mini-player .flex.h-min.w-full.grow > :last-child {
+			min-width: 0;
+		}
 	}
 
 	::view-transition-old(pl-chevron-up) {

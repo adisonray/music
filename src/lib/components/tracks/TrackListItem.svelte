@@ -6,6 +6,7 @@
 	import { formatArtists, formatNameOrUnknown, getItemLanguage } from '$lib/helpers/utils/text.ts'
 	import { createTrackQuery, type TrackData } from '$lib/library/get/value-queries.ts'
 	import Artwork from '../Artwork.svelte'
+	import DownloadButton from '../player/buttons/DownloadButton.svelte'
 	import FavoriteButton from '../FavoriteButton.svelte'
 	import IconButton from '../IconButton.svelte'
 	import Icon from '../icon/Icon.svelte'
@@ -25,6 +26,8 @@
 		selected: boolean
 		showReorderButton?: boolean
 		showFavoriteButton?: boolean
+		showDownloadButton?: boolean
+		downloadButtonLarge?: boolean
 		reorderDragging?: boolean
 		reorderInsertBefore?: boolean
 		reorderInsertAfter?: boolean
@@ -46,6 +49,8 @@
 		selected,
 		showReorderButton = false,
 		showFavoriteButton = true,
+		showDownloadButton = true,
+		downloadButtonLarge = false,
 		reorderDragging = false,
 		reorderInsertBefore = false,
 		reorderInsertAfter = false,
@@ -198,6 +203,15 @@
 				</button>
 			{/if}
 
+			{#if showDownloadButton}
+				<DownloadButton
+					trackId={track.id}
+					downloaded={Boolean(track.file)}
+					large={downloadButtonLarge}
+					class={selectionEnabled ? 'invisible' : undefined}
+				/>
+			{/if}
+
 			{#if showFavoriteButton}
 				<FavoriteButton
 					class={['hidden @sm:flex', selectionEnabled && 'invisible']}
@@ -235,12 +249,11 @@
 								: 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100',
 						]}
 						onclick={(e) => {
-							// If selection is not enabled, enable it
-							// otherwise let parent handle toggling
-							if (!selectionEnabled) {
-								e.stopPropagation()
-								toggleSelection?.()
-							}
+							// The checkbox owns selection clicks. Always stop the
+							// row click so an active selection is not toggled twice.
+							e.preventDefault()
+							e.stopPropagation()
+							toggleSelection?.()
 						}}
 					>
 						<div

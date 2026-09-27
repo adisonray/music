@@ -75,7 +75,7 @@
 		snackbar('Custom source deleted')
 	}
 
-	async function selectSource(sourceId: 'adi' | 'lrcmux' | 'am-lyrics' | 'unison' | 'lrclib' | string) {
+	async function selectSource(sourceId: 'adi-lrcmux' | 'adi' | 'lrcmux' | 'unison' | 'lrclib' | string) {
 		if (!track) return
 		fetching = true
 		activeFetchingSource = sourceId
@@ -206,12 +206,12 @@
 								Select Lyrics Provider
 							</div>
 
-							<!-- Adi Lyrics -->
+							<!-- Adi Lyrics + LRC Mux -->
 							<button
 								type="button"
 								disabled={fetching}
 								class="interactable flex items-center justify-between rounded-xl bg-surfaceContainerLow p-4 text-left transition-colors hover:bg-surfaceContainer"
-								onclick={() => selectSource('adi')}
+								onclick={() => selectSource('adi-lrcmux')}
 							>
 								<div class="flex flex-col">
 									<span class="text-body-large font-bold">Adi Lyrics</span>
@@ -236,24 +236,6 @@
 									<span class="text-body-small text-onSurfaceVariant">Secondary Provider</span>
 								</div>
 								{#if fetching && activeFetchingSource === 'lrcmux'}
-									<Spinner class="size-5" />
-								{:else}
-									<Icon type="chevronRight" class="text-onSurfaceVariant size-5" />
-								{/if}
-							</button>
-
-							<!-- AM Lyrics -->
-							<button
-								type="button"
-								disabled={fetching}
-								class="interactable flex items-center justify-between rounded-xl bg-surfaceContainerLow p-4 text-left transition-colors hover:bg-surfaceContainer"
-								onclick={() => selectSource('am-lyrics')}
-							>
-								<div class="flex flex-col">
-									<span class="text-body-large font-bold">AM Lyrics</span>
-									<span class="text-body-small text-onSurfaceVariant">Apple Music Provider</span>
-								</div>
-								{#if fetching && activeFetchingSource === 'am-lyrics'}
 									<Spinner class="size-5" />
 								{:else}
 									<Icon type="chevronRight" class="text-onSurfaceVariant size-5" />

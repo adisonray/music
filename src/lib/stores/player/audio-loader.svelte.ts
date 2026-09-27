@@ -96,6 +96,29 @@ export class AudioLoader {
 		this.loading = true
 		this.#clearSrc()
 
+		// A downloaded/local file always wins over streaming. A track can
+		// legitimately retain a remote URL for metadata/fallback purposes, but
+		// playback must use the stored file when one exists.
+		if (file !== undefined && directoryId !== undefined) {
+			const { status: trackStatus, file: trackFile } = await getTrackFile(directoryId, file)
+
+			if (this.#current !== gen) {
+				return { status: 'superseded' } as const
+			}
+
+			if (trackStatus === 'loaded' && trackFile) {
+				this.#currentSrc = URL.createObjectURL(trackFile)
+				this.#onSrc(this.#currentSrc)
+				this.loading = false
+				return { status: 'loaded' } as const
+			}
+
+			// If a local file is present but can no longer be read, surface the
+			// local error instead of silently falling back to a network stream.
+			this.loading = false
+			return { status: 'failed', reason: trackStatus } as const
+		}
+
 		if (url) {
 			if (!url.startsWith('http')) {
 				this.loading = false

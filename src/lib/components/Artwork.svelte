@@ -5,6 +5,7 @@
 
 	interface Props {
 		src: string | undefined
+		loading?: 'eager' | 'lazy'
 		animatedSrc?: string | undefined
 		class?: ClassValue
 		alt?: string
@@ -27,9 +28,11 @@
 		class: className,
 		alt,
 		children,
+		loading = 'eager',
 	}: Props = $props()
 
 	let error = $state(false)
+	let fallbackApplied = $state(false)
 	let animatedError = $state(false)
 	let videoLoaded = $state(false)
 	let animatedImageLoaded = $state(false)
@@ -40,6 +43,7 @@
 
 		untrack(() => {
 			error = false
+			fallbackApplied = false
 			animatedError = false
 			videoLoaded = false
 			animatedImageLoaded = false
@@ -154,22 +158,28 @@
 
 <div
 	class={[
-		'relative flex overflow-hidden ring-1 ring-surfaceContainerHigh contain-strict',
+		'relative flex overflow-hidden ring-1 ring-surfaceContainerHigh contain-strict text-onSurfaceVariant/60',
 		!noAspectSquare && 'aspect-square',
 		!noFallbackBg && 'bg-surfaceContainerHighest',
 		className,
 	]}
 >
-	{#if src && !error}
+	{#if (src && !error) || fallbackApplied}
 		<!-- biome-ignore lint/a11y/useAltText: false positive, alt exists -->
 		<img
-			{src}
+			src={fallbackApplied ? '/artwork.svg' : src}
 			{alt}
-			loading="eager"
+			{loading}
+			referrerpolicy="no-referrer"
+			decoding="async"
 			class="size-full object-cover"
 			draggable="false"
 			onerror={() => {
 				error = true
+				if (fallbackIcon === false) {
+					if (fallbackApplied) return
+					fallbackApplied = true
+				}
 			}}
 			onload={() => {
 				error = false
@@ -183,7 +193,9 @@
 			<img
 				src={animatedSrc}
 				{alt}
-				loading="eager"
+				{loading}
+				referrerpolicy="no-referrer"
+				decoding="async"
 				class={[
 					'absolute inset-0 size-full object-cover transition-opacity duration-1000',
 					!animatedImageLoaded && 'opacity-0',
@@ -236,7 +248,7 @@
 		{/key}
 	{/if}
 
-	{#if (!src || error) && !videoLoaded && !animatedImageLoaded && fallbackIcon !== false}
+	{#if (!src || (error && !fallbackApplied)) && !videoLoaded && !animatedImageLoaded && fallbackIcon !== false}
 		<Icon type={fallbackIcon} class="m-auto size-2/3" />
 	{/if}
 
