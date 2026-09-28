@@ -2,6 +2,7 @@
     import { browser } from '$app/environment'
     import { navigating, page } from '$app/state'
     import Button from '$lib/components/Button.svelte'
+    import MobileNavigation from '$lib/components/MobileNavigation.svelte'
     import {
         APP_DIALOGS_COMPONENTS_MAP,
         APP_DIALOGS_KEYS,
@@ -26,14 +27,12 @@
     } from './layout/setup-directories-permission-prompt.svelte.ts'
     import { setupTheme } from './layout/setup-theme.svelte.ts'
 
-    // These context are in different files from their implementation
-    // to allow better trees shaking and inlining
     const player = setPlayerStoreContext(new PlayerStore())
     const dialogs = setDialogsStoreContext(new DialogsStore())
 
     if (browser) {
-        (window as any).player = player;
-        (window as any).dialogs = dialogs;
+        ;(window as any).player = player
+        ;(window as any).dialogs = dialogs
     }
 
     const syncNetworkState = () => {
@@ -55,6 +54,7 @@
 
     let overlayContentHeight = $state(0)
     let bottomBarHeight = $state(0)
+    let mobileNavHeight = $state(0)
 
     let isDraggingFiles = $state(false)
     let dragCounter = 0
@@ -91,9 +91,10 @@
     }
 
     $effect(() => {
+        const effectiveBottomBar = bottomBarHeight > 0 ? bottomBarHeight : mobileNavHeight
         document.documentElement.style.setProperty(
             '--bottom-overlay-height',
-            `${overlayContentHeight + bottomBarHeight}px`,
+            `${overlayContentHeight + effectiveBottomBar}px`,
         )
     })
 
@@ -102,9 +103,7 @@
             const target = document.querySelector('#mini-player')
             const rect = target?.getBoundingClientRect()
 
-            if (!rect) {
-                return
-            }
+            if (!rect) return
 
             const setProperty = (name: keyof DOMRect) => {
                 document.documentElement.style.setProperty(`--mp-${name}`, `${rect[name]}px`)
@@ -126,20 +125,13 @@
     <div class="flex w-full flex-col gap-1 pt-2 pb-1">
         <div>
             <div>{m.libraryDirPromptBrowserPermission()}</div>
-            <div class="text-body-sm opacity-54">
-                {m.libraryDirPromptExplanation()}
-            </div>
+            <div class="text-body-sm opacity-54">{m.libraryDirPromptExplanation()}</div>
         </div>
 
-        <!-- Showing only subset at the time so snackbar does not take up the whole screen -->
         {#each dirs().slice(0, 3) as dir}
             <div class="flex items-center justify-between gap-2">
                 <Icon type="folder" class="size-4 text-tertiaryContainer" />
-
-                <div class="truncate">
-                    {dir.name}
-                </div>
-
+                <div class="truncate">{dir.name}</div>
                 <Button kind="flat" class="ml-auto w-24 shrink-0 text-inversePrimary!" onclick={dir.action}>
                     {m.libraryDirPromptGrant()}
                 </Button>
@@ -153,47 +145,37 @@
 {/snippet}
 
 <svelte:window
-        ondragover={handleDragOver}
-        ondragenter={handleDragEnter}
-        ondragleave={handleDragLeave}
-        ondrop={handleDrop}
-        onkeydown={(e) => {
-            if (e.key !== ' ' || e.repeat || isElementTextInput(e.target)) {
-                return
-            }
+    ondragover={handleDragOver}
+    ondragenter={handleDragEnter}
+    ondragleave={handleDragLeave}
+    ondrop={handleDrop}
+    onkeydown={(e) => {
+        if (e.key !== ' ' || e.repeat || isElementTextInput(e.target)) return
 
-            // AeroUI handles Space itself when a player button is focused.
-            // Ignore it here so the global shortcut never double-toggles.
-            if (e.target instanceof Element && e.target.closest('.aero-player')) {
-                return
-            }
+        if (e.target instanceof Element && e.target.closest('.aero-player')) return
 
-            e.preventDefault()
-            player.togglePlay()
-        }}
-    />
+        e.preventDefault()
+        player.togglePlay()
+    }}
+/>
 
 {#if isDraggingFiles}
-    <div
-        class="pointer-events-none fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/80 backdrop-blur-sm transition-opacity"
-    >
+    <div class="pointer-events-none fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-background/80 backdrop-blur-sm transition-opacity">
         <Icon type="folder" class="size-16 animate-bounce text-primary" />
         <p class="text-title-large font-bold text-onBackground">Drop files here to add them</p>
     </div>
 {/if}
 
 {#if navigating?.to}
-    <div class="page-loading-indicator fixed inset-x-0 top-0 z-20 h-1 bg-tertiary/40">
-        <div
-            class="page-loading-indicator-bar h-1 w-full origin-top-left overflow-hidden bg-onTertiaryContainer"
-        ></div>
+    <div class="page-loading-indicator fixed inset-x-0 top-0 z-50 h-1 bg-tertiary/40">
+        <div class="page-loading-indicator-bar h-1 w-full origin-top-left overflow-hidden bg-onTertiaryContainer"></div>
     </div>
 {/if}
 
 {@render children()}
 
 <div
-    class="page-overlay-container pointer-events-none fixed inset-x-0 bottom-0 grid gap-y-2 overflow-hidden"
+    class="page-overlay-container pointer-events-none fixed inset-x-0 bottom-0 z-20 grid gap-y-2 overflow-visible"
 >
     <SnackbarRenderer />
 
@@ -203,22 +185,29 @@
         {/each}
 
         {#if !page.data.noPlayerOverlay}
-            <PlayerOverlay class={['col-[1/4]', bottomBarHeight < 0 && 'mb-2']} />
+            <PlayerOverlay class={['col-[1/4]', bottomBarHeight < 0 && 'mb-2', mobileNavHeight > 0 && 'max-sm:mb-[calc(var(--mobile-nav-height,0px)+0.5rem)]']} />
         {/if}
     </div>
 
-    <div bind:clientHeight={bottomBarHeight} class="col-[1/6]">
+    <div bind:clientHeight={bottomBarHeight} class="col-[1/6] relative z-30 max-sm:hidden">
         {@render overlaySnippets.bottomBar?.()}
     </div>
 </div>
 
-<div class="pointer-events-none fixed inset-0 z-10">
+<MobileNavigation
+    online={browser ? navigator.onLine : true}
+    bindHeight={(h) => {
+        mobileNavHeight = h
+        document.documentElement.style.setProperty('--mobile-nav-height', `${h}px`)
+    }}
+/>
+
+<div class="pointer-events-none fixed inset-0 z-40">
     <MenuRenderer />
 </div>
 
 {#each APP_DIALOGS_KEYS as dialogKey}
     {@const DialogComponent = APP_DIALOGS_COMPONENTS_MAP[dialogKey]}
-
     <DialogComponent open={dialogs.getAccessor(dialogKey)} />
 {/each}
 
@@ -226,9 +215,7 @@
     @reference '../../app.css';
 
     @keyframes fade-in {
-        from {
-            opacity: 0;
-        }
+        from { opacity: 0; }
     }
 
     .page-loading-indicator {
@@ -241,54 +228,36 @@
 
     .page-overlay-container {
         --p-overlay-side: --spacing(4);
-        grid-template-columns: var(--p-overlay-side) 1fr minmax(0, --spacing(125)) 1fr var(
-                --p-overlay-side
-            );
+        grid-template-columns: var(--p-overlay-side) 1fr minmax(0, --spacing(125)) 1fr var(--p-overlay-side);
     }
 
     @keyframes page-loading-indicator {
-        0% {
-            transform: scaleX(0);
-        }
-        100% {
-            transform: scaleX(0.8);
-        }
+        0% { transform: scaleX(0); }
+        100% { transform: scaleX(0.8); }
     }
 
     @keyframes -global-view-regular-fade-out {
-        to {
-            opacity: 0;
-        }
+        to { opacity: 0; }
     }
 
     @keyframes -global-view-regular-fade-in {
-        from {
-            opacity: 0;
-        }
+        from { opacity: 0; }
     }
 
     @keyframes -global-view-regular-out {
-        to {
-            scale: var(--view-regular-out);
-        }
+        to { scale: var(--view-regular-out); }
     }
 
     @keyframes -global-view-regular-in {
-        from {
-            scale: var(--view-regular-in);
-        }
+        from { scale: var(--view-regular-in); }
     }
 
     @keyframes -global-view-bottom-bar-out {
-        to {
-            translate: 0 100%;
-        }
+        to { translate: 0 100%; }
     }
 
     @keyframes -global-view-bottom-bar-in {
-        from {
-            translate: 0 100%;
-        }
+        from { translate: 0 100%; }
     }
 
     :global(html:active-view-transition-type(regular)) {
@@ -328,6 +297,7 @@
             animation: view-bottom-bar-out 300ms var(--ease-standard) forwards;
         }
     }
+
     :global(html[data-offline] a[href="/discovery"]) {
         display: none !important;
     }

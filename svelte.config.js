@@ -3,6 +3,7 @@ import adapter from '@sveltejs/adapter-static'
 import { loadEnv } from 'vite'
 
 const env = loadEnv('production', process.cwd(), 'PUBLIC_')
+const goatCounterUrl = (env.PUBLIC_GOAT_COUNTER_URL ?? 'https://adidotzip.goatcounter.com').replace(/\/+$/, '')
 
 /** @type {Config} */
 const config = {
@@ -33,7 +34,13 @@ const config = {
 			directives: {
 				'default-src': ['self'],
 
-				'script-src': ['self', 'unsafe-inline', 'https://gc.zgo.at/', 'https://nurislamaibekuly.github.io'],
+				'script-src': [
+					'self',
+					'unsafe-inline',
+					'https://gc.zgo.at/',
+					'https://nurislamaibekuly.github.io',
+					'https://static.cloudflareinsights.com',
+				],
 
 				'style-src': ['self', 'unsafe-inline', 'https://nurislamaibekuly.github.io'],
 
@@ -41,7 +48,7 @@ const config = {
 					'self',
 					'blob:',
 					'data:',
-					env.PUBLIC_GOAT_COUNTER_URL ? `${env.PUBLIC_GOAT_COUNTER_URL}/count` : '',
+					goatCounterUrl ? `${goatCounterUrl}/count` : '',
 					'https://*.jiosaavncdn.com',
 					'https://*.saavncdn.com',
 					'https://*.mzstatic.com',
@@ -77,7 +84,7 @@ const config = {
 					'blob:',
 					'http://127.0.0.1:6463',
 					'http://localhost:6463',
-					env.PUBLIC_GOAT_COUNTER_URL ?? '',
+					goatCounterUrl || '',
 
 					'https://api.amll.dev',
 					'https://lyrics.imreallyadi.space',
@@ -116,6 +123,7 @@ const config = {
 					'https://api.spicyamll.online',
 
 					'https://api.deezer.com',
+					'https://cloudflareinsights.com',
 					'https://e-cdns-images.dzcdn.net',
 					'https://cdn-images.dzcdn.net',
 				],

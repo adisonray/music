@@ -209,7 +209,7 @@
 <section class="card settings-max-width mx-auto mt-6 w-full text-body-lg">
 	{@render heading(m.settingsAppearance())}
 
-	<div class="flex items-center justify-between p-4">
+	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4">
 		<div>{m.settingsApplicationTheme()}</div>
 
 		<Select
@@ -217,7 +217,7 @@
 			items={themeOptions}
 			key="value"
 			labelKey="name"
-			class="w-40"
+			class="w-full sm:w-40"
 		/>
 	</div>
 
@@ -278,7 +278,7 @@
 
 	<Separator />
 
-	<div class="flex items-center justify-between p-4">
+	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4">
 		<div>{m.settingsMotion()}</div>
 
 		<Select
@@ -286,7 +286,7 @@
 			items={motionOptions}
 			key="value"
 			labelKey="name"
-			class="w-40"
+			class="w-full sm:w-40"
 		/>
 	</div>
 </section>
@@ -378,7 +378,7 @@
 </section>
 
 <section class="card settings-max-width mx-auto mt-6 w-full text-body-lg">
-	<div class="flex items-center justify-between p-4">
+	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-4">
 		<div>{m.settingsLanguage()}</div>
 
 		<Select
@@ -386,7 +386,7 @@
 			items={languageOptions}
 			key="value"
 			labelKey="name"
-			class="w-40"
+			class="w-full sm:w-40"
 		/>
 	</div>
 </section>

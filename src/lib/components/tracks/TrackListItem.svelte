@@ -145,7 +145,7 @@
 		<Artwork
 			src={artworkSrc()}
 			alt={track?.name}
-			class={['mr-4 hidden! h-10 w-10 rounded-sm @xs:flex!', loading && 'opacity-50']}
+			class={['mr-3 flex size-10 shrink-0 rounded-sm', loading && 'opacity-50']}
 		>
 			{#if activePlaying}
 				{@const barClassName = 'playing-bar h-5 w-[3px] origin-bottom rounded-sm bg-[white]'}
@@ -174,10 +174,10 @@
 			lang={getItemLanguage(track.language)}
 		>
 			<div class="flex flex-col truncate">
-				<div class={[active ? 'text-primary' : 'text-onSurface', 'truncate']}>
+				<div class={[active ? 'text-primary font-medium' : 'text-onSurface font-medium', 'truncate']}>
 					{track.name}
 				</div>
-				<div class="truncate overflow-hidden">
+				<div class="truncate overflow-hidden text-body-sm opacity-80">
 					{formatArtists(track.artists)}
 				</div>
 			</div>

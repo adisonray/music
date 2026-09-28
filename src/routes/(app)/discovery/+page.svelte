@@ -401,7 +401,7 @@ import { browser } from '$app/environment'
                 type="text"
                 name="search"
                 placeholder="Search tracks, artists, albums"
-                class="h-12 w-60 grow bg-transparent pl-3 text-body-md placeholder:text-onSurfaceVariant focus:outline-none"
+                class="h-12 min-w-0 w-0 flex-1 bg-transparent pl-3 text-body-md placeholder:text-onSurfaceVariant focus:outline-none"
             />
 
             <IconButton icon="magnify" tooltip="Search" type="submit" />

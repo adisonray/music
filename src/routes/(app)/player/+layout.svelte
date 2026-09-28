@@ -61,8 +61,8 @@ import KawarpBackground from '$lib/components/KawarpBackground.svelte'
 	<div
 		class={[
 			layoutMode === 'both' && 'w-100 2xl:w-[28dvw]',
-			layoutMode === 'list' && 'mx-auto w-full',
-			'player-content z-0 grow items-center gap-x-6 overflow-clip px-2 pb-2',
+			layoutMode === 'list' && 'mx-auto w-full max-w-125',
+			'player-content z-0 grow items-center gap-x-6 overflow-clip px-4 pt-[max(8px,env(safe-area-inset-top))] pb-[max(16px,env(safe-area-inset-bottom))]',
 			(player.animatedArtworkSrc && player.animatedArtworkLoaded) || player.artworkSrc
 				? 'bg-transparent'
 				: 'bg-secondaryContainerVariant',
@@ -71,28 +71,28 @@ import KawarpBackground from '$lib/components/KawarpBackground.svelte'
 	>
 		<div
 			class={[
-				isCompactVertical && !isCompactHorizontal ? 'absolute top-0 left-0 h-14' : 'h-16',
+				isCompactVertical && !isCompactHorizontal ? 'absolute top-0 left-0 h-14' : 'h-14',
 				'flex w-full items-center justify-between gap-2 [grid-area:header]',
 			]}
 		>
 			<BackButton />
 
-			<div class="text-title-lg">{m.player()}</div>
+			<div class="text-title-lg font-bold">{m.player()}</div>
 
 			<div class="w-10"></div>
 		</div>
 
 		<!-- Wrap Artwork in a relative container to handle absolute transition children -->
-		<div class="relative flex h-full w-full items-center justify-center [grid-area:artwork]">
+		<div class="relative flex h-full w-full items-center justify-center min-h-0 [grid-area:artwork]">
 			{#if !(isCompact && player.animatedArtworkSrc && player.animatedArtworkLoaded)}
 				{#key activeTrack?.id}
 					<div
-						class="absolute inset-0 m-auto flex items-center justify-center"
+						class="absolute inset-0 m-auto flex items-center justify-center p-2"
 						in:fade={{ duration: 300, delay: 150 }}
 						out:fade={{ duration: 150 }}
 					>
 						<PlayerArtwork
-							class="m-auto my-auto h-full max-h-75 rounded-2xl bg-onSecondary active-view-player:view-name-[pl-artwork]"
+							class="m-auto my-auto aspect-square h-full max-h-[38vh] max-w-[80vw] rounded-2xl bg-onSecondary shadow-xl active-view-player:view-name-[pl-artwork]"
 						/>
 					</div>
 				{/key}

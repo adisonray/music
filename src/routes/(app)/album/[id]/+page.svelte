@@ -247,9 +247,9 @@
 
                 <div class="relative z-0 flex size-full flex-col overflow-clip rounded-2xl bg-surfaceContainerHigh">
                     <div class="flex grow flex-col p-4">
-                        <div class="flex items-center gap-2">
-                            <Icon type="album" class="size-10 text-onSurface/54" />
-                            <h1 class="text-headline-md">{albumName}</h1>
+                        <div class="flex items-center gap-2 min-w-0">
+                            <Icon type="album" class="size-10 shrink-0 text-onSurface/54" />
+                            <h1 class="text-headline-md min-w-0 truncate">{albumName}</h1>
                         </div>
 
                         {#if artistName}

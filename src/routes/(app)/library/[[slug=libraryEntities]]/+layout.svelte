@@ -145,7 +145,7 @@
 {:else}
 	<ListDetailsLayout mode={layoutMode} class="mx-auto w-full max-w-(--app-max-content-width) grow">
 	{#snippet list(mode)}
-		<div class="flex grow flex-col pl-20">
+		<div class="flex grow flex-col sm:pl-20 pl-0">
 			<div class={[mode === 'both' && 'w-100', 'flex grow flex-col px-4']}>
 				<Search
 					name={data.pluralTitle()}

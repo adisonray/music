@@ -15,7 +15,7 @@ import { recordRecentTrack } from '$lib/services/library.ts'
 import { UNKNOWN_ITEM } from '$lib/library/types.ts'
 import { AudioLoader } from './audio-loader.svelte.js'
 import { EqualizerStore } from './equalizer.svelte.js'
-import { updateDiscordPresence, clearDiscordPresence } from '$lib/helpers/discord-rpc.ts'
+import { resolveDiscordArtwork, updateDiscordPresence, clearDiscordPresence } from '$lib/helpers/discord-rpc.ts'
 import { type PlayTrackOptions, QueueStore } from './queue.svelte.js'
 
 export type { PlayTrackOptions }
@@ -528,21 +528,34 @@ export class PlayerStore {
 		this.#preloadedAudio.clear()
 	}
 
-	#updateDiscordPresence = (): void => {
+	#updateDiscordPresence = async (): Promise<void> => {
 		const track = this.activeTrack
 		if (!track || !this.playing) {
 			clearDiscordPresence()
 			return
 		}
 
+		const trackId = track.id
+		const artist = formatArtists(track.artists)
+		const artwork = await resolveDiscordArtwork(
+			this.artworkSrc,
+			track.remoteId,
+			track.name,
+			artist,
+		)
+
+		// Artwork resolution is asynchronous for local Blob artwork. Do not let
+		// a slow lookup publish an old track after the user has changed songs.
+		if (this.activeTrack?.id !== trackId || !this.playing) return
+
 		updateDiscordPresence({
 			title: track.name,
-			artist: formatArtists(track.artists),
+			artist,
 			album: track.album,
 			playing: true,
 			position: this.#audio.currentTime,
 			duration: Number.isFinite(this.#audio.duration) ? this.#audio.duration : this.duration,
-			artwork: this.artworkSrc,
+			artwork,
 		})
 	}
 

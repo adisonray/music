@@ -71,7 +71,7 @@
 		type="text"
 		name="search"
 		placeholder={`${m.librarySearch()} ${name.toLowerCase()}`}
-		class="h-11 min-w-0 w-60 grow bg-transparent px-2 text-body-md placeholder:text-onSurface/54 focus:outline-none"
+		class="h-11 min-w-0 w-0 flex-1 bg-transparent px-2 text-body-md placeholder:text-onSurface/54 focus:outline-none"
 		oninput={(e) => searchHandler(e as unknown as InputEvent)}
 	/>
 

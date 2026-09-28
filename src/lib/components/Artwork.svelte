@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { canPlayHLS } from '$lib/helpers/utils/ua.ts'
+	import { canPlayHLS, isSafari } from '$lib/helpers/utils/ua.ts'
 	import type { IconType } from './icon/Icon.svelte'
 	import Icon from './icon/Icon.svelte'
 
@@ -57,6 +57,11 @@
 		return 'MediaSource' in window
 	})
 
+	const canUseNativeHLS = $derived.by(() => {
+		if (typeof window === 'undefined') return false
+		return canPlayHLS() && (isSafari() || 'ManagedMediaSource' in window)
+	})
+
 	const isAnimatedImage = $derived.by(() => {
 		if (!animatedSrc) {
 			return false
@@ -77,23 +82,18 @@
 		return !isAnimatedImage
 	})
 
-	const shouldShowAnimated = $derived.by(() => {
-		if (!animatedSrc || animatedError) {
-			return false
-		}
-
-		let isM3u8 = false
+	const isM3u8 = $derived.by(() => {
+		if (!animatedSrc) return false
 		try {
-			const pathname = new URL(animatedSrc, window.location.href).pathname.toLowerCase()
-			isM3u8 = pathname.endsWith('.m3u8')
+			return new URL(animatedSrc, window.location.href).pathname.toLowerCase().endsWith('.m3u8')
 		} catch {
-			isM3u8 = animatedSrc.endsWith('.m3u8')
+			return animatedSrc.toLowerCase().endsWith('.m3u8')
 		}
+	})
 
-		if (isM3u8) {
-			return canPlayHLS() || isHlsJsSupported
-		}
-
+	const shouldShowAnimated = $derived.by(() => {
+		if (!animatedSrc || animatedError) return false
+		if (isM3u8) return canUseNativeHLS || isHlsJsSupported
 		return true
 	})
 
@@ -102,56 +102,61 @@
 	$effect(() => {
 		const srcVal = animatedSrc
 		const el = videoElement
-		let hlsInstance: any = null
 
-		let isM3u8 = false
-		if (srcVal) {
-			try {
-				const pathname = new URL(srcVal, window.location.href).pathname.toLowerCase()
-				isM3u8 = pathname.endsWith('.m3u8')
-			} catch {
-				isM3u8 = srcVal.endsWith('.m3u8')
-			}
+		if (!srcVal || !el || !shouldShowAnimated || !isM3u8 || canUseNativeHLS) {
+			return
 		}
 
-		if (srcVal && el && shouldShowAnimated && isM3u8 && !canPlayHLS()) {
-			import('hls.js')
-				.then(({ default: Hls }) => {
-					if (!Hls.isSupported()) {
-						animatedError = true
-						onVideoError?.()
-						return
-					}
+		let hlsInstance: import('hls.js').default | null = null
+		let cancelled = false
 
-					hlsInstance = new Hls({
-						capLevelToPlayerSize: true,
-						maxBufferLength: 5,
-					})
-					hlsInstance.loadSource(srcVal)
-					hlsInstance.attachMedia(el)
-					hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-						el.play().catch((err: unknown) => {
-							console.warn('Failed to play HLS video artwork:', err)
-						})
-					})
-					hlsInstance.on(Hls.Events.ERROR, (_event: any, data: any) => {
-						if (data.fatal) {
-							animatedError = true
-							onVideoError?.()
-						}
+		import('hls.js')
+			.then(({ default: Hls }) => {
+				if (cancelled || !el.isConnected) return
+
+				if (!Hls.isSupported()) {
+					animatedError = true
+					onVideoError?.()
+					return
+				}
+
+				const hls = new Hls({
+					capLevelToPlayerSize: true,
+					maxBufferLength: 5,
+				})
+				hlsInstance = hls
+
+				hls.on(Hls.Events.MANIFEST_PARSED, () => {
+					if (cancelled) return
+					el.play().catch((err: unknown) => {
+						console.warn('Failed to play HLS video artwork:', err)
 					})
 				})
-				.catch((err) => {
-					console.error('Failed to load hls.js', err)
+
+				hls.on(Hls.Events.ERROR, (_event, data) => {
+					if (cancelled || !data.fatal) return
 					animatedError = true
 					onVideoError?.()
 				})
-		}
+
+				hls.loadSource(srcVal)
+				hls.attachMedia(el)
+			})
+			.catch((err) => {
+				if (cancelled) return
+				console.error('Failed to load hls.js', err)
+				animatedError = true
+				onVideoError?.()
+			})
 
 		return () => {
+			cancelled = true
 			if (hlsInstance) {
 				hlsInstance.destroy()
+				hlsInstance = null
 			}
+			el.removeAttribute('src')
+			el.load()
 		}
 	})
 </script>
@@ -217,7 +222,7 @@
 		{#key animatedSrc}
 			<video
 				bind:this={videoElement}
-				src={!animatedSrc?.endsWith('.m3u8') || canPlayHLS() ? animatedSrc : undefined}
+				src={!isM3u8 || canUseNativeHLS ? animatedSrc : undefined}
 				autoplay
 				loop
 				muted
@@ -227,7 +232,7 @@
 					!videoLoaded && 'opacity-0',
 				]}
 				onerror={() => {
-					if (canPlayHLS() || !animatedSrc?.endsWith('.m3u8')) {
+					if (canUseNativeHLS || !isM3u8) {
 						animatedError = true
 						onVideoError?.()
 					}

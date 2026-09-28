@@ -4,7 +4,7 @@ import { ICON_PATHS } from '$lib/components/icon/icon-paths.server.ts'
 import { THEME_PALLETTE_DARK, THEME_PALLETTE_LIGHT } from './server/theme-colors.ts'
 
 const PUBLIC_FALLBACK_PAGE = '/200.html'
-const PUBLIC_GOAT_COUNTER_URL = 'https://adidotzip.goatcounter.com/'
+const PUBLIC_GOAT_COUNTER_URL = 'https://adidotzip.goatcounter.com'
 
 const getThemeColorMeta = (color: string | undefined, theme: 'dark' | 'light') =>
 	`<meta name="theme-color" content="${color}" media="(prefers-color-scheme: ${theme})" />`

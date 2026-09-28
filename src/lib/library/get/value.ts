@@ -4,6 +4,8 @@ import { type DatabaseChangeDetails, onDatabaseChange } from '$lib/db/events.ts'
 import type { Album, Artist, Playlist, Track } from '$lib/library/types.ts'
 import { FAVORITE_PLAYLIST_ID, FAVORITE_PLAYLIST_UUID, type LibraryStoreName } from '../types.ts'
 import { getSongDetails } from '$lib/services/jiosaavn.ts'
+import { getRecentlyPlayed } from '$lib/services/library.ts'
+import { parseDiscoveryResults, spicyamll } from '$lib/services/spicyamll.ts'
 
 const idToUuidMap = new Map<number, string>()
 const remoteTrackMap = new Map<number, TrackData>()
@@ -36,11 +38,6 @@ const recoverRemoteTrack = async (id: number): Promise<TrackData | undefined> =>
     if (typeof window === 'undefined' || id >= 0) return undefined
 
     try {
-        const [{ getRecentlyPlayed }, { parseDiscoveryResults, spicyamll }] = await Promise.all([
-            import('$lib/services/library.ts'),
-            import('$lib/services/spicyamll.ts'),
-        ])
-
         const history = getRecentlyPlayed(100)
         const recent = history.find((item) => String(item.trackId) === String(id))
         if (!recent) return undefined

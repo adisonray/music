@@ -91,7 +91,7 @@ export const getAnimatedArtwork = async (
 					for (const params of queries) {
 						const searchParams = new URLSearchParams(params)
 						const response = await fetch(
-							`https://artwork.m8tec.top/api/v1/artwork/search?${searchParams.toString()}`,
+							`/api/animated-artwork?${searchParams.toString()}`,
 						)
 
 						if (!response.ok) {

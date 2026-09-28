@@ -255,12 +255,12 @@
 			We want to allow user of dialog to specify their preferred height
 			but keep it inside window bounds
 		*/
-		max-width: initial !important;
-		max-height: min(100% - --spacing(6) * 2, var(--dialog-height, 100%), --spacing(150)) !important;
+		max-width: calc(100dvw - --spacing(4)) !important;
+		max-height: min(calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - --spacing(8)), var(--dialog-height, 100%), --spacing(150)) !important;
 		width: clamp(
-			--spacing(70),
+			--spacing(64),
 			var(--dialog-width, --spacing(100)),
-			100% - --spacing(8)
+			100dvw - --spacing(6)
 		) !important;
 		height: max-content !important;
 		overscroll-behavior: contain;

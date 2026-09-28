@@ -28,7 +28,7 @@ export interface LayoutProps {
 
 export const getLayoutProps = (routeId: RouteId | null): LayoutProps => {
 	const isCompactVertical = (innerHeight.current ?? 0) < 600
-	const isCompactHorizontal = (innerWidth.current ?? 0) < 768
+	const isCompactHorizontal = (innerWidth.current ?? 0) < 1200
 	const isCompact = isCompactVertical || isCompactHorizontal
 
 	return {
