@@ -41,28 +41,15 @@ const config = {
 					'self',
 					'blob:',
 					'data:',
-
 					env.PUBLIC_GOAT_COUNTER_URL ? `${env.PUBLIC_GOAT_COUNTER_URL}/count` : '',
-
-					// JioSaavn
 					'https://*.jiosaavncdn.com',
 					'https://*.saavncdn.com',
-
-					// Apple
 					'https://*.mzstatic.com',
-
-					// Deezer
 					'https://e-cdns-images.dzcdn.net',
 					'https://cdn-images.dzcdn.net',
-
-					// TheAudioDB
 					'https://www.theaudiodb.com',
 					'https://r2.theaudiodb.com',
-
-					// Artwork proxy
 					'https://artwork.m8tec.top',
-
-					// SpicyAMLL / Discovery artwork
 					'https://api.spicyamll.online',
 					'https:',
 				],
@@ -70,20 +57,15 @@ const config = {
 				'media-src': [
 					'self',
 					'blob:',
-
-					// JioSaavn
 					'https://*.jiosaavncdn.com',
 					'https://*.saavncdn.com',
-
-					// Apple
 					'https://mvod.itunes.apple.com',
 					'https://*.itunes.apple.com',
 					'https://*.mzstatic.com',
-
-					// Deezer previews
+					'https://*.apple.com',
+					'https://*.applemusic.com',
+					'https://mediaservices.cdn-apple.com',
 					'https://*.dzcdn.net',
-
-					// SpicyAMLL streaming
 					'https://api.spicyamll.online',
 					'https:',
 				],
@@ -92,70 +74,58 @@ const config = {
 
 				'connect-src': [
 					'self',
-
-					// Optional local Discord Rich Presence bridge
+					'blob:',
 					'http://127.0.0.1:6463',
 					'http://localhost:6463',
-
 					env.PUBLIC_GOAT_COUNTER_URL ?? '',
 
-					// Lyrics
 					'https://api.amll.dev',
 					'https://lyrics.imreallyadi.space',
 					'https://lyrics-api.boidu.dev',
 					'https://lrclib.net',
 					'https://unison.boidu.dev',
 					'https://api.lrcmux.dev',
-
-					// Binimum / am-lyrics: cache API + LyricsPlus KPOE servers + Genius fallback
 					'https://lyrics-api.binimum.org',
 					'https://lyricsplus.binimum.org',
 					'https://lyricsplus-seven.vercel.app',
 					'https://lyricsplus.prjktla.workers.dev',
 					'https://lyrics-plus-backend.vercel.app',
 					'https://fetch-genius.samidy.workers.dev',
-
-					// Romanization (used by am-lyrics for CJK tracks)
 					'https://translate.googleapis.com',
 
-					// JioSaavn API
 					'https://jiosaavn-apix.arcadopredator.workers.dev',
 					'https://*.jiosaavncdn.com',
 					'https://*.saavncdn.com',
 
-					// Artwork proxy
 					'https://artwork.m8tec.top',
-
-					// TheAudioDB API
 					'https://www.theaudiodb.com',
 
-					// Apple
+					// Apple Music animated artwork uses HLS. Chromium/hls.js
+					// fetches the playlist and media segments through XHR/fetch,
+					// so these hosts must be allowed by connect-src.
 					'https://itunes.apple.com',
 					'https://*.itunes.apple.com',
 					'https://mvod.itunes.apple.com',
 					'https://*.mzstatic.com',
+					'https://music.apple.com',
+					'https://*.apple.com',
+					'https://*.applemusic.com',
+					'https://amp-api.music.apple.com',
+					'https://mediaservices.cdn-apple.com',
 
-					// SpicyAMLL API + streaming
 					'https://api.spicyamll.online',
 
-					// Deezer API
 					'https://api.deezer.com',
 					'https://e-cdns-images.dzcdn.net',
 					'https://cdn-images.dzcdn.net',
 				],
 
 				'worker-src': ['self', 'blob:'],
-
 				'child-src': ['self', 'blob:'],
-
 				'object-src': ['none'],
-
 				'frame-ancestors': ['none'],
-
 				'form-action': ['none'],
-
 				'manifest-src': ['self'],
-
 				'base-uri': ['none'],
 			},
 		},
@@ -163,9 +133,7 @@ const config = {
 		typescript: {
 			config: (tsConfig) => {
 				tsConfig.extends = '../../tsconfig.base.json'
-
 				tsConfig.include.push('../paraglide/**/*')
-
 				return tsConfig
 			},
 		},
