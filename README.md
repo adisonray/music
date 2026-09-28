@@ -201,6 +201,36 @@ Online music features require an internet connection. Your local library remains
 
 ---
 
+## Native Apps
+
+Adi Music uses the web app as the single source of truth for its native clients.
+
+                         Adi Music
+                             |
+                    +--------+--------+
+                    |                 |
+                 Browser        Native shell
+                    |                 |
+                SvelteKit      +-------+-------+
+                    |          |               |
+                    |       Electron        Capacitor
+                    |          |               |
+                    |       Desktop         Android
+                    |
+                    +---- Shared web app ----+
+
+The Electron desktop shell loads the live production web app at https://music.imreallyadi.space instead of shipping a second copy of the SvelteKit UI. This means normal web changes are deployed once and become available to the desktop client without rebuilding the Electron shell.
+
+The native layer is reserved for capabilities the browser cannot provide directly, including Discord Rich Presence, system media integration, notifications and filesystem features.
+
+Run the desktop shell with:
+
+    pnpm electron:dev
+
+For local SvelteKit development:
+
+    pnpm electron:dev:local
+
 ## Building Locally
 
 Clone the repository and install dependencies:

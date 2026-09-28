@@ -2,62 +2,85 @@ export interface DiscordPresencePayload {
 	title: string
 	artist: string
 	album?: string
+	artwork?: string
 	playing: boolean
 	position: number
 	duration: number
+	url?: string
 }
 
-const BRIDGE_URL = 'http://127.0.0.1:6463'
-const REQUEST_TIMEOUT = 1500
+export interface AdiMusicRpcState {
+	playing: boolean
+	title: string
+	artist: string
+	album?: string
+	artwork?: string
+	position: number
+	duration: number
+	url: string
+}
 
-let lastPayload: string | null = null
-let lastSentAt = 0
-let clearSentAt = 0
-
-const post = async (path: string, body?: unknown): Promise<boolean> => {
-	if (typeof window === 'undefined') return false
-
-	const controller = new AbortController()
-	const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
-
-	try {
-		const response = await fetch(`${BRIDGE_URL}${path}`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: body === undefined ? undefined : JSON.stringify(body),
-			signal: controller.signal,
-		})
-
-		return response.ok
-	} catch {
-		return false
-	} finally {
-		window.clearTimeout(timeout)
+declare global {
+	interface Window {
+		__ADI_MUSIC_RPC__?: AdiMusicRpcState
+		adiNative?: {
+			platform: string
+			isDesktop: boolean
+			discord: {
+				setPresence: (presence: AdiMusicRpcState) => void
+				clearPresence: () => void
+			}
+			media: {
+				setNowPlaying: (metadata: AdiMusicRpcState) => void
+			}
+		}
 	}
 }
 
+const SITE_ORIGIN = 'https://music.imreallyadi.space'
+
+let lastState: string | null = null
+
+const getState = (payload: DiscordPresencePayload): AdiMusicRpcState => ({
+	playing: payload.playing,
+	title: payload.title,
+	artist: payload.artist,
+	album: payload.album || undefined,
+	artwork: payload.artwork || undefined,
+	position: Number.isFinite(payload.position) ? Math.max(0, payload.position) : 0,
+	duration: Number.isFinite(payload.duration) ? Math.max(0, payload.duration) : 0,
+	url: payload.url || window.location.href || SITE_ORIGIN,
+})
+
+const publish = (state: AdiMusicRpcState | undefined): void => {
+	if (typeof window === 'undefined') return
+
+	if (!state) {
+		if (window.__ADI_MUSIC_RPC__ !== undefined) {
+			delete window.__ADI_MUSIC_RPC__
+			window.adiNative?.discord.clearPresence()
+			window.dispatchEvent(new CustomEvent('adi-music-rpc', { detail: null }))
+		}
+		lastState = null
+		return
+	}
+
+	const positionBucket = Math.floor(state.position / 2)
+	const normalized = JSON.stringify({ ...state, position: positionBucket })
+
+	if (normalized === lastState) return
+
+	lastState = normalized
+	window.__ADI_MUSIC_RPC__ = state
+	window.adiNative?.discord.setPresence(state)
+	window.adiNative?.media.setNowPlaying(state)
+	window.dispatchEvent(new CustomEvent('adi-music-rpc', { detail: state }))
+}
+
 export const updateDiscordPresence = (payload: DiscordPresencePayload): void => {
-	const positionBucket = Math.floor(Math.max(0, payload.position) / 5) * 5
-	const normalized = JSON.stringify({
-		...payload,
-		position: positionBucket,
-		duration: Math.max(0, Math.floor(payload.duration)),
-	})
-
-	const now = Date.now()
-	if (normalized === lastPayload && now - lastSentAt < 5000) return
-
-	lastPayload = normalized
-	lastSentAt = now
-	clearSentAt = 0
-	void post('/v1/presence', payload)
+	publish(getState(payload))
 }
 
 export const clearDiscordPresence = (): void => {
-	const now = Date.now()
-	if (now - clearSentAt < 5000) return
-
-	lastPayload = null
-	clearSentAt = now
-	void post('/v1/presence/clear')
+	publish(undefined)
 }

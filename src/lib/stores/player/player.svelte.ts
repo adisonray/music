@@ -255,6 +255,7 @@ export class PlayerStore {
 			this.#autoplayTrackId = null
 			syncPlayingFromAudio()
 			this.#updatePositionState()
+			this.#updateDiscordPresence()
 		}
 
 		audio.onratechange = () => {
@@ -270,6 +271,7 @@ export class PlayerStore {
 		audio.onpause = () => {
 			syncPlayingFromAudio()
 			this.#updatePositionState()
+			this.#updateDiscordPresence()
 		}
 
 		audio.onerror = () => {
@@ -304,6 +306,7 @@ export class PlayerStore {
 
 		audio.onseeked = () => {
 			this.#updatePositionState()
+			this.#updateDiscordPresence()
 		}
 
 		audio.onended = () => {
@@ -332,11 +335,13 @@ export class PlayerStore {
 		audio.ondurationchange = () => {
 			this.duration = audio.duration
 			this.#updatePositionState()
+			this.#updateDiscordPresence()
 		}
 
 		audio.ontimeupdate = throttle(() => {
 			this.currentTime = audio.currentTime
-		}, 100)
+			this.#updateDiscordPresence()
+		}, 2000)
 
 		const setPlaybackRate = () => {
 			const rate = clamp(
@@ -376,23 +381,6 @@ export class PlayerStore {
 
 		$effect(() => {
 			audio.muted = this.muted
-		})
-
-		$effect(() => {
-			const track = this.activeTrack
-			if (!track || !this.playing) {
-				clearDiscordPresence()
-				return
-			}
-
-			updateDiscordPresence({
-				title: track.name,
-				artist: formatArtists(track.artists),
-				album: track.album,
-				playing: true,
-				position: this.currentTime,
-				duration: this.duration,
-			})
 		})
 
 		const ms = typeof window === 'undefined' ? undefined : window.navigator.mediaSession
@@ -538,6 +526,24 @@ export class PlayerStore {
 			if (entry.objectUrl) URL.revokeObjectURL(entry.objectUrl)
 		}
 		this.#preloadedAudio.clear()
+	}
+
+	#updateDiscordPresence = (): void => {
+		const track = this.activeTrack
+		if (!track || !this.playing) {
+			clearDiscordPresence()
+			return
+		}
+
+		updateDiscordPresence({
+			title: track.name,
+			artist: formatArtists(track.artists),
+			album: track.album,
+			playing: true,
+			position: this.#audio.currentTime,
+			duration: Number.isFinite(this.#audio.duration) ? this.#audio.duration : this.duration,
+			artwork: this.artworkSrc,
+		})
 	}
 
 	#updatePositionState = (): void => {

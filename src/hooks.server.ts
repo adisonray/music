@@ -1,8 +1,10 @@
 import type { Handle } from '@sveltejs/kit'
 import { APP_DESCRIPTION_EN } from '$lib/app-metadata.ts'
 import { ICON_PATHS } from '$lib/components/icon/icon-paths.server.ts'
-import { PUBLIC_FALLBACK_PAGE, PUBLIC_GOAT_COUNTER_URL } from '$env/static/public'
 import { THEME_PALLETTE_DARK, THEME_PALLETTE_LIGHT } from './server/theme-colors.ts'
+
+const PUBLIC_FALLBACK_PAGE = '/200.html'
+const PUBLIC_GOAT_COUNTER_URL = 'https://adidotzip.goatcounter.com/'
 
 const getThemeColorMeta = (color: string | undefined, theme: 'dark' | 'light') =>
 	`<meta name="theme-color" content="${color}" media="(prefers-color-scheme: ${theme})" />`
