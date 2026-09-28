@@ -2,7 +2,7 @@
 /// <reference types="@sveltejs/kit" />
 /// <reference types="../.generated/svelte-kit/ambient.d.ts" />
 
-import { PUBLIC_FALLBACK_PAGE } from '$env/static/public'
+const PUBLIC_FALLBACK_PAGE = '/200.html'
 import { build, files, prerendered, version } from '$service-worker'
 
 declare const self: ServiceWorkerGlobalScope
